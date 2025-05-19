@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="space-y-6">
+    <!-- Отображение сообщений -->
+    <div id="messages-container">
+        {% if messages %}
+        <div class="bg-gray-100 p-4 rounded-lg messages">
+            {% for message in messages %}
+            <p class="{% if message.tags == 'success' %}text-green-800{% elif message.tags == 'error' %}text-red-800{% elif message.tags == 'warning' %}text-yellow-800{% endif %}">
+                {{ message }}
+            </p>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="flex flex-col sm:flex-row justify-between items-center">
+        <h2 class="text-xl sm:text-2xl font-bold text-gray-900 mb-2 sm:mb-0">Регионы</h2>
+        {% if can_add_region %}
+        <button onclick="showForm('region-form', null)" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600">Добавить регион</button>
+        {% endif %}
+    </div>
+
+    {% if can_add_client %}
+    <div id="client-form" class="bg-white rounded-lg shadow p-4 mb-6">
+        <h3 class="text-base sm:text-lg font-medium mb-4" id="client-form-title">Добавить клиента в регион</h3>
+        <form id="client-form-element" method="post" action="{% url 'create_client' %}">
+            {% csrf_token %}
+            <input type="hidden" name="client_id" id="client-id">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Имя</label>
+                    <input type="text" name="name" required class="mt-1 block w-full border rounded-lg px-3 py-2">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Телефон</label>
+                    <input type="text" name="phone" required class="mt-1 block w-full border rounded-lg px-3 py-2">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Адрес</label>
+                    <input type="text" name="address" required class="mt-1 block w-full border rounded-lg px-3 py-2">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Квартира</label>
+                    <input type="text" name="apartment" class="mt-1 block w-full border rounded-lg px-3 py-2">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Этаж</label>
+                    <input type="text" name="floor" class="mt-1 block w-full border rounded-lg px-3 py-2">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Подъезд</label>
+                    <input type="text" name="entrance" class="mt-1 block w-full border rounded-lg px-3 py-2">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Регион</label>
+                    <select name="region" required class="mt-1 block w-full border rounded-lg px-3 py-2">
+                        {% for region in regions %}
+                        <option value="{{ region.id }}">{{ region.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="mt-4 flex space-x-2">
+                <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600">Сохранить</button>
+                <button type="button" onclick="document.getElementById('client-form').classList.add('hidden')" class="text-gray-500 hover:text-gray-700">Закрыть</button>
+            </div>
+        </form>
+    </div>
+    {% endif %}
+
+    <div id="client-attach-form" class="bg-white rounded-lg shadow p-4 mb-6">
+        <h3 class="text-base sm:text-lg font-medium mb-4">Прикрепить существующего клиента к региону</h3>
+        <form method="post" action="{% url 'edit_client' %}">
+            {% csrf_token %}
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Клиент</label>
+                    <select name="client_id" required class="mt-1 block w-full border rounded-lg px-3 py-2">
+                        <option value="">Выберите клиента</option>
+                        {% for client in clients %}
+                        <option value="{{ client.id }}">{{ client.name }} ({{ client.phone }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Регион</label>
+                    <select name="region" required class="mt-1 block w-full border rounded-lg px-3 py-2">
+                        <option value="">Выберите регион</option>
+                        {% for region in regions %}
+                        <option value="{{ region.id }}">{{ region.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="mt-4 flex space-x-2">
+                <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600">Прикрепить</button>
+            </div>
+        </form>
+    </div>
+
+    {% if can_add_region %}
+    <div id="region-form" class="bg-white rounded-lg shadow p-4 hidden">
+        <h3 class="text-base sm:text-lg font-medium mb-4" id="region-form-title">Новый регион</h3>
+        <form id="region-form-element" method="post" action="{% url 'create_region' %}">
+            {% csrf_token %}
+            <input type="hidden" name="region_id" id="region-id">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Название</label>
+                    <input type="text" name="name" required class="mt-1 block w-full border rounded-lg px-3 py-2">
+                </div>
+            </div>
+            <div class="mt-4 flex space-x-2">
+                <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600">Сохранить</button>
+                <button type="button" onclick="document.getElementById('region-form').classList.add('hidden')" class="text-gray-500 hover:text-gray-700">Отмена</button>
+            </div>
+        </form>
+    </div>
+    {% endif %}
+
+    <div class="bg-white rounded-lg shadow p-4">
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead>
+                    <tr>
+                        <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
+                        <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Название</th>
+                        <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Адреса клиентов</th>
+                        <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Дата создания</th>
+                        <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Действия</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200">
+                    {% for region in page_obj %}
+                    <tr>
+                        <td class="px-2 sm:px-4 py-2 text-sm">{{ region.id }}</td>
+                        <td class="px-2 sm:px-4 py-2 text-sm">{{ region.name }}</td>
+                        <td class="px-2 sm:px-4 py-2 text-sm">
+                            {% for client in region.client_set.all %}
+                                <div class="flex justify-between items-center">
+                                    <span>{{ client.address }}{% if client.apartment %}, кв. {{ client.apartment }}{% endif %}{% if client.floor %}, {{ client.floor }} этаж{% endif %}{% if client.entrance %}, подъезд {{ client.entrance }}{% endif %}</span>
+                                    {% if can_change_client %}
+                                    <button onclick="editClient({{ client.id }}, '{{ client.name|escapejs }}', '{{ client.phone|escapejs }}', '{{ client.address|escapejs }}', '{{ client.apartment|escapejs }}', '{{ client.floor|escapejs }}', '{{ client.entrance|escapejs }}', '{{ client.region.id }}')" class="text-blue-500 hover:underline ml-2">Редактировать</button>
+                                    {% endif %}
+                                </div>
+                            {% empty %}
+                                —
+                            {% endfor %}
+                        </td>
+                        <td class="px-2 sm:px-4 py-2 text-sm">{{ region.created_at|date:"d.m.Y H:i" }}</td>
+                        <td class="px-2 sm:px-4 py-2 text-sm space-x-2">
+                            {% if can_change_region %}
+                            <button onclick="editRegion({{ region.id }}, '{{ region.name|escapejs }}')" class="text-blue-500 hover:underline">Редактировать</button>
+                            {% endif %}
+                            {% if can_delete_region %}
+                            <button onclick="showDeleteModal('{% url 'delete_region' region.id %}')" class="text-red-500 hover:underline">Удалить</button>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="5" class="px-2 sm:px-4 py-2 text-center text-gray-500">Нет регионов</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="mt-4 flex flex-col sm:flex-row justify-between items-center">
+            <div class="mb-2 sm:mb-0">
+                {% if page_obj.has_previous %}
+                    <a href="?page={{ page_obj.previous_page_number }}" class="px-4 py-2 text-blue-500 hover:underline">Назад</a>
+                {% endif %}
+            </div>
+            <div class="space-x-2 mb-2 sm:mb-0">
+                {% for num in page_obj.paginator.page_range %}
+                    {% if num == page_obj.number %}
+                        <span class="px-4 py-2 bg-blue-500 text-white rounded-lg">{{ num }}</span>
+                    {% else %}
+                        <a href="?page={{ num }}" class="px-4 py-2 text-blue-500 hover:underline">{{ num }}</a>
+                    {% endif %}
+                {% endfor %}
+            </div>
+            <div>
+                {% if page_obj.has_next %}
+                    <a href="?page={{ page_obj.next_page_number }}" class="px-4 py-2 text-blue-500 hover:underline">Вперёд</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+function showForm(formId, regionId) {
+    const form = document.getElementById(formId);
+    const formElement = document.getElementById('region-form-element');
+    const title = document.getElementById('region-form-title');
+    form.classList.remove('hidden');
+    if (regionId) {
+        formElement.action = '{% url "edit_region" %}';
+        title.textContent = 'Редактировать регион';
+        document.getElementById('region-id').value = regionId;
+    } else {
+        formElement.action = '{% url "create_region" %}';
+        title.textContent = 'Новый регион';
+        document.getElementById('region-id').value = '';
+        formElement.reset();
+    }
+}
+
+function editRegion(id, name) {
+    showForm('region-form', id);
+    const form = document.getElementById('region-form-element');
+    form.querySelector('[name="name"]').value = name;
+}
+
+function editClient(id, name, phone, address, apartment, floor, entrance, regionId) {
+    const form = document.getElementById('client-form');
+    const formElement = document.getElementById('client-form-element');
+    const title = document.getElementById('client-form-title');
+    form.classList.remove('hidden');
+    formElement.action = '{% url "edit_client" %}';
+    title.textContent = 'Редактировать клиента';
+    document.getElementById('client-id').value = id;
+    form.querySelector('[name="name"]').value = name;
+    form.querySelector('[name="phone"]').value = phone;
+    form.querySelector('[name="address"]').value = address;
+    form.querySelector('[name="apartment"]').value = apartment || '';
+    form.querySelector('[name="floor"]').value = floor || '';
+    form.querySelector('[name="entrance"]').value = entrance || '';
+    form.querySelector('[name="region"]').value = regionId;
+}
+</script>
+{% endblock %}

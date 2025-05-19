@@ -1,0 +1,302 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="space-y-6">
+    <!-- Отображение сообщений -->
+    <div id="messages-container">
+        {% if messages %}
+        <div class="bg-gray-100 p-4 rounded-lg messages">
+            {% for message in messages %}
+            <p class="{% if message.tags == 'success' %}text-green-800{% elif message.tags == 'error' %}text-red-800{% elif message.tags == 'warning' %}text-yellow-800{% endif %}">
+                {{ message }}
+            </p>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+    
+    {% if perms.crm.add_product %}
+    <div id="product-form" class="bg-white rounded-lg shadow p-4 mb-6">
+        <h3 class="text-base sm:text-lg font-medium mb-4">Добавить продукт</h3>
+        <form method="post" action="{% url 'create_product' %}">
+            {% csrf_token %}
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Название продукта</label>
+                    <input type="text" name="name" required class="mt-1 block w-full border rounded-lg px-3 py-2" placeholder="Например, Вода 19л">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Объем (л)</label>
+                    <input type="number" name="volume" step="0.1" required class="mt-1 block w-full border rounded-lg px-3 py-2" placeholder="19">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Цена (руб.)</label>
+                    <input type="number" name="price" step="0.01" required class="mt-1 block w-full border rounded-lg px-3 py-2" placeholder="300">
+                </div>
+            </div>
+            <div class="mt-4 flex space-x-2">
+                <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600">Добавить</button>
+            </div>
+        </form>
+    </div>
+    {% endif %}
+
+    <div class="flex flex-col sm:flex-row justify-between items-center">
+        <h2 class="text-xl sm:text-2xl font-bold text-gray-900 mb-2 sm:mb-0">Тара</h2>
+        {% if can_add_container %}
+        <button onclick="showForm('container-form', null)" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600">Добавить тару</button>
+        {% endif %}
+    </div>
+    {% if can_add_container %}
+    <div id="container-form" class="bg-white rounded-lg shadow p-4 hidden">
+        <h3 class="text-base sm:text-lg font-medium mb-4" id="container-form-title">Новая тара</h3>
+        <form id="container-form-element" method="post" action="{% url 'create_container' %}">
+            {% csrf_token %}
+            <input type="hidden" name="container_id" id="container-id">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Продукт</label>
+                    <select name="product" required class="mt-1 block w-full border rounded-lg px-3 py-2">
+                        <option value="">Выберите продукт</option>
+                        {% for product in products %}
+                        <option value="{{ product.id }}">{{ product.name }} ({{ product.volume }}л)</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Клиент</label>
+                    <select name="client" class="mt-1 block w-full border rounded-lg px-3 py-2">
+                        <option value="">Без клиента (на складе)</option>
+                        {% for client in clients %}
+                        <option value="{{ client.id }}">{{ client.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Количество</label>
+                    <input type="number" name="quantity" required min="1" class="mt-1 block w-full border rounded-lg px-3 py-2">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Местоположение</label>
+                    <select name="is_at_client" required class="mt-1 block w-full border rounded-lg px-3 py-2">
+                        <option value="False">На складе</option>
+                        <option value="True">У клиента</option>
+                    </select>
+                </div>
+            </div>
+            <div class="mt-4 flex space-x-2">
+                <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600">Сохранить</button>
+                <button type="button" onclick="document.getElementById('container-form').classList.add('hidden')" class="text-gray-500 hover:text-gray-700">Отмена</button>
+            </div>
+        </form>
+    </div>
+    {% endif %}
+    <!-- Форма массового возврата -->
+    {% if can_change_container %}
+    <div id="bulk-return-form" class="bg-white rounded-lg shadow p-4 hidden mt-4">
+        <h3 class="text-base sm:text-lg font-medium mb-4">Массовый возврат тары</h3>
+        <form id="bulk-return-form-element" method="post" action="{% url 'bulk_return_containers' %}">
+            {% csrf_token %}
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Клиент</label>
+                    <select name="client" required class="mt-1 block w-full border rounded-lg px-3 py-2">
+                        <option value="">Выберите клиента</option>
+                        {% for client in clients %}
+                        <option value="{{ client.id }}">{{ client.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Продукт</label>
+                    <select name="product" required class="mt-1 block w-full border rounded-lg px-3 py-2">
+                        <option value="">Выберите продукт</option>
+                        {% for product in products %}
+                        <option value="{{ product.id }}">{{ product.name }} ({{ product.volume }}л)</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Количество</label>
+                    <input type="number" name="quantity" required min="1" class="mt-1 block w-full border rounded-lg px-3 py-2">
+                </div>
+            </div>
+            <div class="mt-4 flex space-x-2">
+                <button type="submit" class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600">Вернуть</button>
+                <button type="button" onclick="document.getElementById('bulk-return-form').classList.add('hidden')" class="text-gray-500 hover:text-gray-700">Отмена</button>
+            </div>
+        </form>
+    </div>
+    <button onclick="document.getElementById('bulk-return-form').classList.remove('hidden')" class="bg-yellow-500 text-white px-4 py-2 rounded-lg hover:bg-yellow-600 mt-4">Массовый возврат</button>
+    {% endif %}
+    <div class="bg-white rounded-lg shadow p-4 mt-4">
+        <h3 class="text-base sm:text-lg font-medium mb-4">Возврат тары от клиента</h3>
+        <form id="return-container-form" method="post" action="/return-container/">
+            {% csrf_token %}
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700" for="return-client">Клиент</label>
+                    <select name="client" id="return-client" required class="mt-1 block w-full border rounded-lg px-3 py-2" title="Клиент">
+                        <option value="">Выберите клиента</option>
+                        {% for client in clients %}
+                        <option value="{{ client.id }}">{{ client.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700" for="return-product">Продукт</label>
+                    <select name="product" id="return-product" required class="mt-1 block w-full border rounded-lg px-3 py-2" title="Продукт">
+                        <option value="">Выберите продукт</option>
+                        {% for product in products %}
+                        <option value="{{ product.id }}">{{ product.name }} ({{ product.volume }}л)</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700" for="return-quantity">Количество возврата</label>
+                    <input type="number" name="quantity" id="return-quantity" required min="1" class="mt-1 block w-full border rounded-lg px-3 py-2" placeholder="Введите количество возвращаемой тары">
+                </div>
+            </div>
+            <div class="mt-4 flex space-x-2">
+                <button type="submit" class="bg-yellow-500 text-white px-4 py-2 rounded-lg hover:bg-yellow-600">Вернуть тару</button>
+            </div>
+        </form>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4">
+        <div class="mb-4">
+            <input type="text" id="container-search" placeholder="Поиск по продукту или клиенту..." class="flex-1 border rounded-lg px-4 py-2 w-full">
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead>
+                    <tr>
+                        <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
+                        <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Продукт</th>
+                        <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Клиент</th>
+                        <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Количество</th>
+                        <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Местоположение</th>
+                        <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Последнее обновление</th>
+                        <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Действия</th>
+                    </tr>
+                </thead>
+                <tbody id="container-table-body" class="divide-y divide-gray-200">
+                    {% for container in page_obj %}
+                    <tr class="{% if container.id in low_stock_container_ids %}bg-yellow-100{% endif %}">
+                        <td class="px-2 sm:px-4 py-2 text-sm">{{ container.id }}</td>
+                        <td class="px-2 sm:px-4 py-2 text-sm">{{ container.product.name }}</td>
+                        <td class="px-2 sm:px-4 py-2 text-sm">{{ container.client.name|default:"На складе" }}</td>
+                        <td class="px-2 sm:px-4 py-2 text-sm">{{ container.quantity }}</td>
+                        <td class="px-2 sm:px-4 py-2 text-sm">{{ container.is_at_client|yesno:"У клиента,На складе" }}</td>
+                        <td class="px-2 sm:px-4 py-2 text-sm">{{ container.last_updated|date:"d.m.Y H:i" }}</td>
+                        <td class="px-2 sm:px-4 py-2 text-sm space-x-2">
+                            {% if can_change_container and container.is_at_client %}
+                            <a href="{% url 'return_container' container.id %}" class="text-green-500 hover:underline">Вернуть</a>
+                            {% endif %}
+                            {% if can_change_container %}
+                            <button onclick="editContainer({{ container.id }}, {{ container.product.id }}, '{{ container.client.id|default:'' }}', {{ container.quantity }}, '{{ container.is_at_client|yesno:'True,False' }}')" class="text-blue-500 hover:underline">Редактировать</button>
+                            {% endif %}
+                            {% if can_delete_container %}
+                            <button onclick="showDeleteModal('{% url 'delete_container' container.id %}')" class="text-red-500 hover:underline">Удалить</button>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="px-2 sm:px-4 py-2 text-center text-gray-500">Нет тары</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="mt-4 flex flex-col sm:flex-row justify-between items-center">
+            <div class="mb-2 sm:mb-0">
+                {% if page_obj.has_previous %}
+                    <a href="?page={{ page_obj.previous_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}" class="px-4 py-2 text-blue-500 hover:underline">Назад</a>
+                {% endif %}
+            </div>
+            <div class="space-x-2 mb-2 sm:mb-0">
+                {% for num in page_obj.paginator.page_range %}
+                    {% if num == page_obj.number %}
+                        <span class="px-4 py-2 bg-blue-500 text-white rounded-lg">{{ num }}</span>
+                    {% else %}
+                        <a href="?page={{ num }}{% if search_query %}&search={{ search_query }}{% endif %}" class="px-4 py-2 text-blue-500 hover:underline">{{ num }}</a>
+                    {% endif %}
+                {% endfor %}
+            </div>
+            <div>
+                {% if page_obj.has_next %}
+                    <a href="?page={{ page_obj.next_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}" class="px-4 py-2 text-blue-500 hover:underline">Вперёд</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+function showForm(formId, containerId) {
+    const form = document.getElementById(formId);
+    const formElement = document.getElementById('container-form-element');
+    const title = document.getElementById('container-form-title');
+    form.classList.remove('hidden');
+    if (containerId) {
+        formElement.action = '{% url "edit_container" %}';
+        title.textContent = 'Редактировать тару';
+        document.getElementById('container-id').value = containerId;
+    } else {
+        formElement.action = '{% url "create_container" %}';
+        title.textContent = 'Новая тара';
+        document.getElementById('container-id').value = '';
+        formElement.reset();
+    }
+}
+
+function editContainer(id, productId, clientId, quantity, isAtClient) {
+    showForm('container-form', id);
+    const form = document.getElementById('container-form-element');
+    form.querySelector('[name="product"]').value = productId;
+    form.querySelector('[name="client"]').value = clientId || '';
+    form.querySelector('[name="quantity"]').value = quantity;
+    form.querySelector('[name="is_at_client"]').value = isAtClient;
+}
+
+document.getElementById('container-search').addEventListener('input', function(e) {
+    const query = e.target.value;
+    fetch(`/api/containers/?search=${encodeURIComponent(query)}`)
+        .then(response => response.json())
+        .then(data => {
+            const tbody = document.getElementById('container-table-body');
+            tbody.innerHTML = '';
+            if (data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="px-2 sm:px-4 py-2 text-center text-gray-500">Нет тары</td></tr>';
+                return;
+            }
+            const canChangeContainer = {{ can_change_container|yesno:"true,false" }};
+            const canDeleteContainer = {{ can_delete_container|yesno:"true,false" }};
+            const lowStockContainerIds = {{ low_stock_container_ids|safe }};
+            data.forEach(container => {
+                const row = document.createElement('tr');
+                let actions = '';
+                if (canChangeContainer && container.is_at_client) {
+                    actions += `<a href="/return-container/${container.id}/" class="text-green-500 hover:underline">Вернуть</a>`;
+                }
+                if (canChangeContainer) {
+                    actions += `<button onclick="editContainer(${container.id}, ${container.product.id}, '${container.client ? container.client.id : ''}', ${container.quantity}, '${container.is_at_client ? 'True' : 'False'}')" class="text-blue-500 hover:underline">Редактировать</button>`;
+                }
+                if (canDeleteContainer) {
+                    actions += `<button onclick="showDeleteModal('/delete-container/${container.id}/')" class="text-red-500 hover:underline">Удалить</button>`;
+                }
+                const isLowStock = lowStockContainerIds.includes(container.id);
+                row.className = isLowStock ? 'bg-yellow-100' : '';
+                row.innerHTML = `
+                    <td class="px-2 sm:px-4 py-2 text-sm">${container.id}</td>
+                    <td class="px-2 sm:px-4 py-2 text-sm">${container.product.name}</td>
+                    <td class="px-2 sm:px-4 py-2 text-sm">${container.client ? container.client.name : 'На складе'}</td>
+                    <td class="px-2 sm:px-4 py-2 text-sm">${container.quantity}</td>
+                    <td class="px-2 sm:px-4 py-2 text-sm">${container.is_at_client ? 'У клиента' : 'На складе'}</td>
+                    <td class="px-2 sm:px-4 py-2 text-sm">${new Date(container.last_updated).toLocaleString('ru-RU', {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'})}</td>
+                    <td class="px-2 sm:px-4 py-2 text-sm space-x-2">${actions}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        });
+});
+</script>
+{% endblock %}

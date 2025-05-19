@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="space-y-6">
+    <!-- Отображение сообщений -->
+    <div id="messages-container">
+        {% if messages %}
+        <div class="bg-gray-100 p-4 rounded-lg messages">
+            {% for message in messages %}
+            <p class="{% if message.tags == 'success' %}text-green-800{% elif message.tags == 'error' %}text-red-800{% elif message.tags == 'warning' %}text-yellow-800{% endif %}">
+                {{ message }}
+            </p>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+
+    <h2 class="text-2xl font-bold text-gray-900">Панель управления</h2>
+    {% if low_stock_products %}
+    <div class="bg-yellow-100 p-4 rounded-lg">
+        <h3 class="text-lg font-medium text-yellow-800">Низкий уровень тары на складе</h3>
+        <ul class="list-disc pl-5 mt-2">
+            {% for product, quantity in low_stock_products %}
+            <li>{{ product.name }}: {{ quantity }} шт.</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div class="bg-white rounded-lg shadow p-4">
+            <h3 class="text-base sm:text-lg font-medium text-gray-900">Заказы сегодня</h3>
+            <p class="text-xl sm:text-2xl font-bold text-blue-600">{{ today_orders }}</p>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4">
+            <h3 class="text-base sm:text-lg font-medium text-gray-900">Всего клиентов</h3>
+            <p class="text-xl sm:text-2xl font-bold text-blue-600">{{ total_clients }}</p>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4">
+            <h3 class="text-base sm:text-lg font-medium text-gray-900">Доставлено бутылок</h3>
+            <p class="text-xl sm:text-2xl font-bold text-blue-600">{{ delivered_bottles }}</p>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4">
+            <h3 class="text-base sm:text-lg font-medium text-gray-900">Выручка сегодня</h3>
+            <p class="text-xl sm:text-2xl font-bold text-blue-600">{{ today_revenue }} руб.</p>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4">
+            <h3 class="text-base sm:text-lg font-medium text-gray-900">Тара у клиентов</h3>
+            <p class="text-xl sm:text-2xl font-bold text-blue-600">{{ containers_at_clients }}</p>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4">
+            <h3 class="text-base sm:text-lg font-medium text-gray-900">Тара на складе</h3>
+            <p class="text-xl sm:text-2xl font-bold text-blue-600">{{ containers_at_warehouse }}</p>
+        </div>
+    </div>
+    <!-- График заказов по дням -->
+    <div class="bg-white rounded-lg shadow p-4">
+        <div class="flex flex-col sm:flex-row justify-between items-center mb-4">
+            <h3 class="text-base sm:text-lg font-medium text-gray-900 mb-2 sm:mb-0">Заказы по дням (последние 7 дней)</h3>
+            <a href="{% url 'export_orders_by_day_csv' %}" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600">Экспорт в CSV</a>
+        </div>
+        <div class="overflow-x-auto">
+            <canvas id="ordersByDayChart" height="100"></canvas>
+        </div>
+    </div>
+    <!-- График выручки по месяцам -->
+    <div class="bg-white rounded-lg shadow p-4">
+        <div class="flex flex-col sm:flex-row justify-between items-center mb-4">
+            <h3 class="text-base sm:text-lg font-medium text-gray-900 mb-2 sm:mb-0">Выручка по месяцам (последние 6 месяцев)</h3>
+            <a href="{% url 'export_revenue_by_month_csv' %}" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600">Экспорт в CSV</a>
+        </div>
+        <div class="overflow-x-auto">
+            <canvas id="revenueByMonthChart" height="100"></canvas>
+        </div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4">
+        <h3 class="text-base sm:text-lg font-medium text-gray-900 mb-4">Заказы сегодня</h3>
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead>
+                    <tr>
+                        <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
+                        <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Клиент</th>
+                        <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Продукт</th>
+                        <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Количество</th>
+                        <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Статус</th>
+                        <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Дата</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200">
+                    {% for order in orders %}
+                    <tr>
+                        <td class="px-2 sm:px-4 py-2 text-sm">{{ order.id }}</td>
+                        <td class="px-2 sm:px-4 py-2 text-sm">{{ order.client.name }}</td>
+                        <td class="px-2 sm:px-4 py-2 text-sm">{{ order.product.name }}</td>
+                        <td class="px-2 sm:px-4 py-2 text-sm">{{ order.quantity }}</td>
+                        <td class="px-2 sm:px-4 py-2 text-sm">{{ order.get_status_display }}</td>
+                        <td class="px-2 sm:px-4 py-2 text-sm">{{ order.order_date|date:"d.m.Y H:i" }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="px-2 sm:px-4 py-2 text-center text-gray-500">Нет заказов за сегодня</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    // График заказов по дням
+    const ordersByDayCtx = document.getElementById('ordersByDayChart').getContext('2d');
+    new Chart(ordersByDayCtx, {
+        type: 'line',
+        data: {
+            labels: {{ orders_by_day_labels|safe }},
+            datasets: [{
+                label: 'Количество заказов',
+                data: {{ orders_by_day_data|safe }},
+                borderColor: 'rgba(75, 192, 192, 1)',
+                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                fill: true,
+            }]
+        },
+        options: {
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Количество заказов'
+                    }
+                },
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Дата'
+                    }
+                }
+            },
+            responsive: true,
+            maintainAspectRatio: false
+        }
+    });
+
+    // График выручки по месяцам
+    const revenueByMonthCtx = document.getElementById('revenueByMonthChart').getContext('2d');
+    new Chart(revenueByMonthCtx, {
+        type: 'bar',
+        data: {
+            labels: {{ revenue_by_month_labels|safe }},
+            datasets: [{
+                label: 'Выручка (руб.)',
+                data: {{ revenue_by_month_data|safe }},
+                backgroundColor: 'rgba(54, 162, 235, 0.6)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Выручка (руб.)'
+                    }
+                },
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Месяц'
+                    }
+                }
+            },
+            responsive: true,
+            maintainAspectRatio: false
+        }
+    });
+</script>
+{% endblock %}

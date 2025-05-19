@@ -1,0 +1,339 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="space-y-6">
+    <!-- Отображение сообщений -->
+    <div id="messages-container">
+        {% if messages %}
+        <div class="bg-gray-100 p-4 rounded-lg messages">
+            {% for message in messages %}
+            <p class="{% if message.tags == 'success' %}text-green-800{% elif message.tags == 'error' %}text-red-800{% elif message.tags == 'warning' %}text-yellow-800{% endif %}">
+                {{ message }}
+            </p>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="flex flex-col sm:flex-row justify-between items-center">
+        <h2 class="text-xl sm:text-2xl font-bold text-gray-900 mb-2 sm:mb-0">Заказы</h2>
+        {% if can_add_order %}
+        <button onclick="showForm('order-form', null)" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600">Добавить заказ</button>
+        {% endif %}
+    </div>
+    {% if can_add_order %}
+    <div id="order-form" class="bg-white rounded-lg shadow p-4 hidden">
+        <h3 class="text-base sm:text-lg font-medium mb-4" id="order-form-title">Новый заказ</h3>
+        <form id="order-form-element" method="post" action="{% url 'create_order' %}">
+            {% csrf_token %}
+            <input type="hidden" name="order_id" id="order-id">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Номер телефона клиента</label>
+                    <input type="text" name="phone" required id="client-phone" class="mt-1 block w-full border rounded-lg px-3 py-2" list="client-phone-options" autocomplete="off" oninput="fetchClientDetails(this.value)">
+                    <datalist id="client-phone-options">
+                        {% for client in clients %}
+                        <option value="{{ client.phone }}">{{ client.name }}</option>
+                        {% endfor %}
+                    </datalist>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Продукт</label>
+                    <select name="product" required class="mt-1 block w-full border rounded-lg px-3 py-2">
+                        {% for product in products %}
+                        <option value="{{ product.id }}">{{ product.name }} ({{ product.volume }}л, {{ product.price }} руб.)</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Количество</label>
+                    <input type="number" name="quantity" required min="1" class="mt-1 block w-full border rounded-lg px-3 py-2">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Статус</label>
+                    <select name="status" required class="mt-1 block w-full border rounded-lg px-3 py-2">
+                        <option value="planned">Запланирован</option>
+                        <option value="delivered">Доставлен</option>
+                        <option value="canceled">Отменён</option>
+                    </select>
+                </div>
+                <div class="sm:col-span-2">
+                    <label class="block text-sm font-medium text-gray-700">Адрес доставки (автоматически)</label>
+                    <input type="text" name="delivery_address" id="delivery-address" readonly class="mt-1 block w-full border rounded-lg px-3 py-2 bg-gray-100">
+                </div>
+            </div>
+            <div class="mt-4 flex space-x-2">
+                <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600">Сохранить</button>
+                <button type="button" onclick="document.getElementById('order-form').classList.add('hidden')" class="text-gray-500 hover:text-gray-700">Отмена</button>
+            </div>
+        </form>
+    </div>
+    {% endif %}
+    <div class="bg-white rounded-lg shadow p-4">
+        <div class="mb-4 flex flex-col sm:flex-row justify-between items-center gap-2">
+            <div class="w-full sm:w-auto mb-2 sm:mb-0">
+                <input type="text" id="order-search" placeholder="Поиск по имени клиента..." class="flex-1 border rounded-lg px-4 py-2 w-full">
+            </div>
+            <select id="order-status-filter" class="border rounded-lg px-4 py-2 w-full sm:w-auto mb-2 sm:mb-0">
+                <option value="">Все статусы</option>
+                <option value="planned">Запланирован</option>
+                <option value="delivered">Доставлен</option>
+                <option value="canceled">Отменён</option>
+            </select>
+            <select id="order-region-filter" class="border rounded-lg px-4 py-2 w-full sm:w-auto mb-2 sm:mb-0" title="Регион">
+                <option value="">Все регионы</option>
+                {% for region in regions %}
+                <option value="{{ region.id }}" {% if region_id == region.id|stringformat:'s' %}selected{% endif %}>{{ region.name }}</option>
+                {% endfor %}
+            </select>
+            <select id="order-driver-filter" class="border rounded-lg px-4 py-2 w-full sm:w-auto mb-2 sm:mb-0" title="Водитель">
+                <option value="">Все водители</option>
+                {% for driver in drivers %}
+                <option value="{{ driver.id }}" {% if driver_id == driver.id|stringformat:'s' %}selected{% endif %}>{{ driver.name }}</option>
+                {% endfor %}
+            </select>
+            <select id="order-client-filter" class="border rounded-lg px-4 py-2 w-full sm:w-auto mb-2 sm:mb-0" title="Клиент">
+                <option value="">Все клиенты</option>
+                {% for client in clients %}
+                <option value="{{ client.id }}" {% if client_id == client.id|stringformat:'s' %}selected{% endif %}>{{ client.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead>
+                    <tr>
+                        <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
+                        <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Клиент</th>
+                        <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Продукт</th>
+                        <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Количество</th>
+                        <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Статус</th>
+                        <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Дата заказа</th>
+                        <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Адрес доставки</th>
+                        <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Водитель</th>
+                        <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Действия</th>
+                    </tr>
+                </thead>
+                <tbody id="order-table-body" class="divide-y divide-gray-200">
+                    {% for order in page_obj %}
+                    <tr>
+                        <td class="px-2 sm:px-4 py-2 text-sm">{{ order.id }}</td>
+                        <td class="px-2 sm:px-4 py-2 text-sm">{{ order.client.name }}</td>
+                        <td class="px-2 sm:px-4 py-2 text-sm">{{ order.product.name }}</td>
+                        <td class="px-2 sm:px-4 py-2 text-sm">{{ order.quantity }}</td>
+                        <td class="px-2 sm:px-4 py-2 text-sm">{{ order.get_status_display }}</td>
+                        <td class="px-2 sm:px-4 py-2 text-sm">{{ order.order_date|date:"d.m.Y H:i" }}</td>
+                        <td class="px-2 sm:px-4 py-2 text-sm">{{ order.delivery_address }}</td>
+                        <td class="px-2 sm:px-4 py-2 text-sm">
+                            {% if order.driver %}
+                                {{ order.driver.name }}
+                            {% else %}
+                                Не назначен
+                            {% endif %}
+                        </td>
+                        <td class="px-2 sm:px-4 py-2 text-sm space-x-2">
+                            {% if can_change_order %}
+                            <button onclick="editOrder({{ order.id }}, '{{ order.client.phone }}', '{{ order.product.id }}', {{ order.quantity }}, '{{ order.status }}', '{{ order.delivery_address|escapejs }}', {% if order.driver %}'{{ order.driver.id }}'{% else %}''{% endif %})" class="text-blue-500 hover:underline">Редактировать</button>
+                            {% endif %}
+                            {% if can_delete_order %}
+                            <button onclick="showDeleteModal('{% url 'delete_order' order.id %}')" class="text-red-500 hover:underline">Удалить</button>
+                            {% endif %}
+                            <input type="number" min="1" max="{{ order.quantity }}" value="{{ order.quantity }}" id="return-qty-{{ order.id }}" class="w-16 border rounded px-1 py-0.5 text-xs align-middle" style="width:60px;">
+                            <button onclick="returnContainer({{ order.id }}, document.getElementById('return-qty-{{ order.id }}').value)" type="button" class="bg-yellow-500 text-white px-2 py-1 rounded hover:bg-yellow-600 text-xs">Возврат тары</button>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="9" class="px-2 sm:px-4 py-2 text-center text-gray-500">Нет заказов</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="mt-4 flex flex-col sm:flex-row justify-between items-center">
+            <div class="mb-2 sm:mb-0">
+                {% if page_obj.has_previous %}
+                    <a href="?page={{ page_obj.previous_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}" class="px-4 py-2 text-blue-500 hover:underline">Назад</a>
+                {% endif %}
+            </div>
+            <div class="space-x-2 mb-2 sm:mb-0">
+                {% for num in page_obj.paginator.page_range %}
+                    {% if num == page_obj.number %}
+                        <span class="px-4 py-2 bg-blue-500 text-white rounded-lg">{{ num }}</span>
+                    {% else %}
+                        <a href="?page={{ num }}{% if search_query %}&search={{ search_query }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}" class="px-4 py-2 text-blue-500 hover:underline">{{ num }}</a>
+                    {% endif %}
+                {% endfor %}
+            </div>
+            <div>
+                {% if page_obj.has_next %}
+                    <a href="?page={{ page_obj.next_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}" class="px-4 py-2 text-blue-500 hover:underline">Вперёд</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+function showForm(formId, orderId) {
+    const form = document.getElementById(formId);
+    const formElement = document.getElementById('order-form-element');
+    const title = document.getElementById('order-form-title');
+    form.classList.remove('hidden');
+    if (orderId) {
+        formElement.action = '{% url "edit_order" %}';
+        title.textContent = 'Редактировать заказ';
+        document.getElementById('order-id').value = orderId;
+    } else {
+        formElement.action = '{% url "create_order" %}';
+        title.textContent = 'Новый заказ';
+        document.getElementById('order-id').value = '';
+        formElement.reset();
+    }
+}
+
+function editOrder(id, phone, productId, quantity, status, deliveryAddress, driverId) {
+    showForm('order-form', id);
+    const form = document.getElementById('order-form-element');
+    form.querySelector('[name="phone"]').value = phone;
+    form.querySelector('[name="product"]').value = productId;
+    form.querySelector('[name="quantity"]').value = quantity;
+    form.querySelector('[name="status"]').value = status;
+    form.querySelector('[name="delivery_address"]').value = deliveryAddress;
+}
+
+function fetchClientDetails(phone) {
+    if (phone.length > 5) { // Минимальная длина для поиска
+        fetch(`/api/clients/?search=${encodeURIComponent(phone)}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.length > 0) {
+                    const client = data[0];
+                    document.getElementById('delivery-address').value = `${client.address}, ${client.apartment || ''}, ${client.floor || ''} этаж, ${client.entrance || ''}`.replace(', ,', ',').replace(' ,', '');
+                } else {
+                    document.getElementById('delivery-address').value = '';
+                }
+            });
+    } else {
+        document.getElementById('delivery-address').value = '';
+    }
+}
+
+function returnContainer(orderId, quantity) {
+    fetch(`/api/orders/` + orderId + `/update/`, {
+        method: 'PATCH',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token }}',
+        },
+        body: JSON.stringify({ status: 'returned', return_quantity: quantity }),
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Ошибка при возврате тары.');
+        }
+    });
+}
+
+// Фильтрация по статусу, региону, водителю, клиенту
+function applyOrderFilters() {
+    const status = document.getElementById('order-status-filter').value;
+    const region = document.getElementById('order-region-filter').value;
+    const driver = document.getElementById('order-driver-filter').value;
+    const client = document.getElementById('order-client-filter').value;
+    let url = '?';
+    if (status) url += 'status=' + encodeURIComponent(status) + '&';
+    if (region) url += 'region=' + encodeURIComponent(region) + '&';
+    if (driver) url += 'driver=' + encodeURIComponent(driver) + '&';
+    if (client) url += 'client=' + encodeURIComponent(client) + '&';
+    window.location = url;
+}
+document.getElementById('order-status-filter').addEventListener('change', applyOrderFilters);
+document.getElementById('order-region-filter').addEventListener('change', applyOrderFilters);
+document.getElementById('order-driver-filter').addEventListener('change', applyOrderFilters);
+document.getElementById('order-client-filter').addEventListener('change', applyOrderFilters);
+
+document.getElementById('order-search').addEventListener('input', function(e) {
+    const query = e.target.value;
+    const status = document.getElementById('order-status-filter').value;
+    fetch(`/api/orders/?search=${encodeURIComponent(query)}&status=${status}`)
+        .then(response => response.json())
+        .then(data => {
+            const tbody = document.getElementById('order-table-body');
+            tbody.innerHTML = '';
+            if (data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" class="px-2 sm:px-4 py-2 text-center text-gray-500">Нет заказов</td></tr>';
+                return;
+            }
+            const canChangeOrder = {{ can_change_order|yesno:"true,false" }};
+            const canDeleteOrder = {{ can_delete_order|yesno:"true,false" }};
+            data.forEach(order => {
+                const row = document.createElement('tr');
+                let actions = '';
+                if (canChangeOrder) {
+                    actions += `<button onclick="editOrder(${order.id}, '${order.client.phone}', '${order.product.id}', ${order.quantity}, '${order.status}', '${order.delivery_address.replace(/"/g, '"')}', '${order.driver?.id || ''}')" class="text-blue-500 hover:underline">Редактировать</button>`;
+                }
+                if (canDeleteOrder) {
+                    actions += `<button onclick="showDeleteModal('/delete-order/${order.id}/')" class="text-red-500 hover:underline">Удалить</button>`;
+                }
+                actions += `<input type="number" min="1" max="${order.quantity}" value="${order.quantity}" id="return-qty-${order.id}" class="w-16 border rounded px-1 py-0.5 text-xs align-middle" style="width:60px;">`;
+                actions += `<button onclick="returnContainer(${order.id}, document.getElementById('return-qty-${order.id}').value)" type="button" class="bg-yellow-500 text-white px-2 py-1 rounded hover:bg-yellow-600 text-xs">Возврат тары</button>`;
+                row.innerHTML = `
+                    <td class="px-2 sm:px-4 py-2 text-sm">${order.id}</td>
+                    <td class="px-2 sm:px-4 py-2 text-sm">${order.client.name}</td>
+                    <td class="px-2 sm:px-4 py-2 text-sm">${order.product.name}</td>
+                    <td class="px-2 sm:px-4 py-2 text-sm">${order.quantity}</td>
+                    <td class="px-2 sm:px-4 py-2 text-sm">${order.status_display}</td>
+                    <td class="px-2 sm:px-4 py-2 text-sm">${new Date(order.order_date).toLocaleString('ru-RU', {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'})}</td>
+                    <td class="px-2 sm:px-4 py-2 text-sm">${order.delivery_address}</td>
+                    <td class="px-2 sm:px-4 py-2 text-sm">${order.driver?.name || 'Не назначен'}</td>
+                    <td class="px-2 sm:px-4 py-2 text-sm space-x-2">${actions}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        });
+});
+
+document.getElementById('order-status-filter').addEventListener('change', function(e) {
+    const query = document.getElementById('order-search').value;
+    const status = e.target.value;
+    fetch(`/api/orders/?search=${encodeURIComponent(query)}&status=${status}`)
+        .then(response => response.json())
+        .then(data => {
+            const tbody = document.getElementById('order-table-body');
+            tbody.innerHTML = '';
+            if (data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" class="px-2 sm:px-4 py-2 text-center text-gray-500">Нет заказов</td></tr>';
+                return;
+            }
+            const canChangeOrder = {{ can_change_order|yesno:"true,false" }};
+            const canDeleteOrder = {{ can_delete_order|yesno:"true,false" }};
+            data.forEach(order => {
+                const row = document.createElement('tr');
+                let actions = '';
+                if (canChangeOrder) {
+                    actions += `<button onclick="editOrder(${order.id}, '${order.client.phone}', '${order.product.id}', ${order.quantity}, '${order.status}', '${order.delivery_address.replace(/"/g, '"')}', '${order.driver?.id || ''}')" class="text-blue-500 hover:underline">Редактировать</button>`;
+                }
+                if (canDeleteOrder) {
+                    actions += `<button onclick="showDeleteModal('/delete-order/${order.id}/')" class="text-red-500 hover:underline">Удалить</button>`;
+                }
+                actions += `<input type="number" min="1" max="${order.quantity}" value="${order.quantity}" id="return-qty-${order.id}" class="w-16 border rounded px-1 py-0.5 text-xs align-middle" style="width:60px;">`;
+                actions += `<button onclick="returnContainer(${order.id}, document.getElementById('return-qty-${order.id}').value)" type="button" class="bg-yellow-500 text-white px-2 py-1 rounded hover:bg-yellow-600 text-xs">Возврат тары</button>`;
+                row.innerHTML = `
+                    <td class="px-2 sm:px-4 py-2 text-sm">${order.id}</td>
+                    <td class="px-2 sm:px-4 py-2 text-sm">${order.client.name}</td>
+                    <td class="px-2 sm:px-4 py-2 text-sm">${order.product.name}</td>
+                    <td class="px-2 sm:px-4 py-2 text-sm">${order.quantity}</td>
+                    <td class="px-2 sm:px-4 py-2 text-sm">${order.status_display}</td>
+                    <td class="px-2 sm:px-4 py-2 text-sm">${new Date(order.order_date).toLocaleString('ru-RU', {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'})}</td>
+                    <td class="px-2 sm:px-4 py-2 text-sm">${order.delivery_address}</td>
+                    <td class="px-2 sm:px-4 py-2 text-sm">${order.driver?.name || 'Не назначен'}</td>
+                    <td class="px-2 sm:px-4 py-2 text-sm space-x-2">${actions}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        });
+});
+</script>
+{% endblock %}
