@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block content %}
+<h2 class="text-2xl font-bold mb-4">Маршрут: {{ route.name }}</h2>
+<p class="mb-2"><b>Водитель:</b> {{ route.driver.name }}</p>
+<p class="mb-4"><b>Дата создания:</b> {{ route.created_at|date:"d.m.Y H:i" }}</p>
+<div class="bg-white rounded-lg shadow p-4 mb-6">
+    <h3 class="text-base sm:text-lg font-medium mb-4">Карта маршрута</h3>
+    <div id="route-map" class="w-full h-96"></div>
+</div>
+<table class="min-w-full divide-y divide-gray-200 mt-4">
+    <thead>
+        <tr>
+            <th class="px-4 py-2 text-left">№</th>
+            <th class="px-4 py-2 text-left">Клиент</th>
+            <th class="px-4 py-2 text-left">Адрес</th>
+            <th class="px-4 py-2 text-left">Заказ</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for ro in route_orders %}
+        <tr>
+            <td class="px-4 py-2">{{ forloop.counter }}</td>
+            <td class="px-4 py-2">{{ ro.order.client.name }}</td>
+            <td class="px-4 py-2">{{ ro.order.delivery_address }}</td>
+            <td class="px-4 py-2">#{{ ro.order.id }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="4" class="text-center text-gray-500">Нет заказов в маршруте</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}
+{% block extra_js %}
+<script src="https://api-maps.yandex.ru/2.1/?lang=ru_RU&apikey=8c33c930-b8d9-47f3-a8f9-1b99ad7ef7b8" type="text/javascript"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    ymaps.ready(function() {
+        var map = new ymaps.Map('route-map', {
+            center: [40.283944, 69.619261], // Худжанд
+            zoom: 12
+        });
+        var addresses = [];
+        {% for ro in route_orders %}
+        addresses.push("{{ ro.order.delivery_address|escapejs }}");
+        {% endfor %}
+        var points = [];
+        var geocoderPromises = addresses.map(function(address) {
+            return ymaps.geocode(address).then(function(res) {
+                var coords = res.geoObjects.get(0) ? res.geoObjects.get(0).geometry.getCoordinates() : null;
+                if (coords) {
+                    points.push(coords);
+                    var placemark = new ymaps.Placemark(coords, { balloonContent: address });
+                    map.geoObjects.add(placemark);
+                }
+            });
+        });
+        Promise.all(geocoderPromises).then(function() {
+            if (points.length > 1) {
+                var multiRoute = new ymaps.multiRouter.MultiRoute({
+                    referencePoints: points,
+                    params: { routingMode: 'auto' }
+                }, { boundsAutoApply: true });
+                map.geoObjects.add(multiRoute);
+            } else if (points.length === 1) {
+                map.setCenter(points[0], 14);
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

@@ -1,9 +1,9 @@
-from django.shortcuts import render, redirect
+from django.shortcuts import render, redirect, get_object_or_404
 from django.utils import timezone
-from django.db.models import Q, Sum, Count
+from django.db.models import Q, Sum, Count, Max
 from django.db.models.functions import TruncDay, TruncMonth
 from django.contrib.auth import authenticate, login, logout
-from django.contrib.auth.decorators import login_required, permission_required
+from django.contrib.auth.decorators import login_required, permission_required, user_passes_test
 from django.core.paginator import Paginator
 from django.contrib import messages
 from django.http import HttpResponse, JsonResponse
@@ -15,12 +15,12 @@ import csv
 from datetime import timedelta
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
-from openpyxl import Workbook
-from urllib.parse import quote as urlquote
-from asgiref.sync import async_to_sync
-from channels.layers import get_channel_layer
-from .models import Client, Order, Product, Container, Driver, Region
+from .models import Client, Order, Product, Container, Driver, Region, Route, RouteOrder, ClientCategory, LoyaltyTransaction, Notification, LoyaltyProgram
 from .serializers import ClientSerializer, OrderSerializer, ContainerSerializer, DriverSerializer, RegionSerializer
+import pandas as pd
+from io import BytesIO
+from datetime import datetime
+from django.utils.timezone import make_aware
 
 def login_view(request):
     if request.method == 'POST':
@@ -41,36 +41,6 @@ def logout_view(request):
 @login_required
 def dashboard(request):
     today = timezone.now().date()
-    driver_profile = getattr(request.user, 'driver_profile', None)
-    if driver_profile:
-        # Водитель видит только свои заказы и статистику по ним
-        orders = Order.objects.filter(order_date__date=today, driver=driver_profile)
-        today_orders = orders.count()
-        total_clients = Client.objects.filter(order__driver=driver_profile).distinct().count()
-        delivered_bottles = sum(order.quantity for order in orders.filter(status='delivered'))
-        today_revenue = sum(order.quantity * order.product.price for order in orders.filter(status='delivered'))
-        # Тара только по клиентам этого водителя
-        driver_clients = Client.objects.filter(order__driver=driver_profile).distinct()
-        total_containers = Container.objects.filter(client__in=driver_clients).aggregate(total=Sum('quantity'))['total'] or 0
-        containers_at_clients = Container.objects.filter(is_at_client=True, client__in=driver_clients).aggregate(total=Sum('quantity'))['total'] or 0
-        containers_at_warehouse = total_containers - containers_at_clients
-        # Графики и предупреждения не показываем водителю
-        return render(request, 'dashboard.html', {
-            'orders': orders,
-            'today_orders': today_orders,
-            'total_clients': total_clients,
-            'delivered_bottles': delivered_bottles,
-            'today_revenue': today_revenue,
-            'total_containers': total_containers,
-            'containers_at_clients': containers_at_clients,
-            'containers_at_warehouse': containers_at_warehouse,
-            'low_stock_products': [],
-            'orders_by_day_labels': [],
-            'orders_by_day_data': [],
-            'revenue_by_month_labels': [],
-            'revenue_by_month_data': [],
-        })
-
     orders = Order.objects.filter(order_date__date=today)
     today_orders = orders.count()
     total_clients = Client.objects.count()
@@ -154,65 +124,39 @@ def dashboard(request):
 
 @login_required
 def driver_dashboard(request):
+    """
+    Личный кабинет водителя: показывает только заказы, назначенные этому водителю.
+    """
+    # Проверяем связь с Driver через user
     driver = getattr(request.user, 'driver_profile', None)
     if not driver:
         messages.error(request, 'Вы не являетесь водителем.')
         return redirect('dashboard')
-    # Показываем только НЕвыполненные заказы
-    orders = Order.objects.filter(driver=driver).exclude(status='delivered').order_by('-order_date')
-    # Фильтры
-    status_filter = request.GET.get('status', '')
-    region_id = request.GET.get('region', '')
-    client_id = request.GET.get('client', '')
-    if status_filter:
-        orders = orders.filter(status=status_filter)
-    if region_id:
-        orders = orders.filter(client__region_id=region_id)
-    if client_id:
-        orders = orders.filter(client_id=client_id)
-    regions = Region.objects.all()
-    clients = Client.objects.filter(order__driver=driver).distinct()
-    return render(request, 'driver_dashboard.html', {
-        'orders': orders,
-        'regions': regions,
-        'clients': clients,
-        'region_id': region_id,
-        'client_id': client_id,
-        'status_filter': status_filter,
-    })
+    orders = Order.objects.filter(driver=driver).order_by('-order_date')
+    return render(request, 'driver_dashboard.html', {'orders': orders})
 
 @login_required
 def orders(request):
     search_query = request.GET.get('search', '')
     status_filter = request.GET.get('status', '')
-    region_id = request.GET.get('region', '')
-    driver_id = request.GET.get('driver', '')
-    client_id = request.GET.get('client', '')
-    orders = Order.objects.exclude(status='delivered').order_by('-order_date')
+    
+    orders = Order.objects.all().order_by('-order_date')
+    
     if search_query:
         orders = orders.filter(client__name__icontains=search_query)
     if status_filter:
         orders = orders.filter(status=status_filter)
-    if region_id:
-        orders = orders.filter(client__region_id=region_id)
-    if driver_id:
-        orders = orders.filter(driver_id=driver_id)
-    if client_id:
-        orders = orders.filter(client_id=client_id)
+    
     paginator = Paginator(orders, 10)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
+    
     return render(request, 'orders.html', {
         'page_obj': page_obj,
         'search_query': search_query,
         'status_filter': status_filter,
-        'region_id': region_id,
-        'driver_id': driver_id,
-        'client_id': client_id,
         'clients': Client.objects.all(),
         'products': Product.objects.all(),
-        'regions': Region.objects.all(),
-        'drivers': Driver.objects.all(),
         'can_add_order': request.user.has_perm('crm.add_order'),
         'can_change_order': request.user.has_perm('crm.change_order'),
         'can_delete_order': request.user.has_perm('crm.delete_order'),
@@ -256,17 +200,6 @@ def create_order(request):
             delivery_address=delivery_address,
             driver=driver
         )
-
-        # PUSH-УВЕДОМЛЕНИЕ ВОДИТЕЛЮ
-        if driver:
-            channel_layer = get_channel_layer()
-            async_to_sync(channel_layer.group_send)(
-                f'driver_{driver.id}',
-                {
-                    'type': 'send_notification',
-                    'message': f'Вам назначен новый заказ #{order.id} для клиента {client.name}.'
-                }
-            )
 
         if status == 'delivered':
             Container.objects.create(
@@ -333,17 +266,6 @@ def edit_order(request):
         driver = None
         if client.region and client.region.driver_set.exists():
             driver = client.region.driver_set.first()
-
-        # Если водитель изменился и назначен
-        if driver and (order.driver != driver):
-            channel_layer = get_channel_layer()
-            async_to_sync(channel_layer.group_send)(
-                f'driver_{driver.id}',
-                {
-                    'type': 'send_notification',
-                    'message': f'Вам назначен новый заказ #{order.id} для клиента {client.name}.'
-                }
-            )
 
         # Если статус меняется на "Доставлен"
         if new_status == 'delivered' and old_status != 'delivered':
@@ -457,6 +379,7 @@ def create_driver(request):
             name=request.POST.get('name'),
             phone=request.POST.get('phone'),
             email=request.POST.get('email', ''),
+            license_number=request.POST.get('license_number'),
             region_id=request.POST.get('region'),
             created_at=timezone.now()
         )
@@ -474,6 +397,7 @@ def edit_driver(request):
         driver.name = request.POST.get('name')
         driver.phone = request.POST.get('phone')
         driver.email = request.POST.get('email', '')
+        driver.license_number = request.POST.get('license_number')
         driver.region_id = request.POST.get('region')
         driver.save()
         messages.success(request, "Водитель обновлён.")
@@ -548,10 +472,22 @@ def delete_region(request, region_id):
 def clients(request):
     search_query = request.GET.get('search', '')
     
-    clients = Client.objects.all().order_by('id')
-    
+    clients = Client.objects.select_related('region', 'category').all()
     if search_query:
-        clients = clients.filter(Q(name__icontains=search_query) | Q(phone__icontains=search_query))
+        clients = clients.filter(
+            Q(name__icontains=search_query) |
+            Q(phone__icontains=search_query) |
+            Q(email__icontains=search_query) |
+            Q(company_name__icontains=search_query) |
+            Q(tax_number__icontains=search_query)
+        )
+    
+    # Добавляем агрегацию по заказам
+    clients = clients.annotate(
+        orders_count=Count('order'),
+        total_orders_volume=Sum('order__quantity'),
+        last_order_date=Max('order__order_date')
+    ).order_by('-last_order_date', 'name')
     
     paginator = Paginator(clients, 10)
     page_number = request.GET.get('page')
@@ -561,6 +497,7 @@ def clients(request):
         'page_obj': page_obj,
         'search_query': search_query,
         'regions': Region.objects.all(),
+        'categories': ClientCategory.objects.all(),
         'can_add_client': request.user.has_perm('crm.add_client'),
         'can_change_client': request.user.has_perm('crm.change_client'),
         'can_delete_client': request.user.has_perm('crm.delete_client'),
@@ -570,22 +507,42 @@ def clients(request):
 @permission_required('crm.add_client', raise_exception=True)
 def create_client(request):
     if request.method == 'POST':
-        floor_value = request.POST.get('floor')
-        floor = int(floor_value) if floor_value else None
+        client_type = request.POST.get('client_type', 'individual')
+        name = request.POST.get('name')
+        phone = request.POST.get('phone')
+        email = request.POST.get('email', '')
+        address = request.POST.get('address')
+        apartment = request.POST.get('apartment', '')
+        floor = request.POST.get('floor')
+        entrance = request.POST.get('entrance', '')
+        region_id = request.POST.get('region')
+        notes = request.POST.get('notes', '')
         
-        client = Client.objects.create(
-            name=request.POST.get('name'),
-            phone=request.POST.get('phone'),
-            email=request.POST.get('email', ''),
-            address=request.POST.get('address'),
-            apartment=request.POST.get('apartment', ''),
-            floor=floor,
-            entrance=request.POST.get('entrance', ''),
-            notes=request.POST.get('notes', ''),
-            region_id=request.POST.get('region'),
-            registration_date=timezone.now()
-        )
-        messages.success(request, "Клиент добавлен.")
+        # Дополнительные поля для юридических лиц
+        company_name = request.POST.get('company_name', '')
+        tax_number = request.POST.get('tax_number', '')
+        contact_person = request.POST.get('contact_person', '')
+
+        try:
+            client = Client.objects.create(
+                client_type=client_type,
+                name=name,
+                phone=phone,
+                email=email,
+                address=address,
+                apartment=apartment,
+                floor=floor if floor else None,
+                entrance=entrance,
+                region_id=region_id if region_id else None,
+                notes=notes,
+                company_name=company_name if client_type == 'business' else '',
+                tax_number=tax_number if client_type == 'business' else '',
+                contact_person=contact_person if client_type == 'business' else ''
+            )
+            messages.success(request, "Клиент создан успешно.")
+        except Exception as e:
+            messages.error(request, f"Ошибка при создании клиента: {str(e)}")
+        
         return redirect('clients')
     return redirect('clients')
 
@@ -593,27 +550,103 @@ def create_client(request):
 @permission_required('crm.change_client', raise_exception=True)
 def edit_client(request):
     if request.method == 'POST':
-        client = Client.objects.get(id=request.POST.get('client_id'))
-        # Если форма пришла только с region и client_id (прикрепление к региону)
-        if 'region' in request.POST and len(request.POST) <= 4:
-            client.region_id = request.POST.get('region')
+        client = get_object_or_404(Client, id=request.POST.get('client_id'))
+        
+        # Валидация основных полей
+        name = request.POST.get('name', '').strip()
+        phone = request.POST.get('phone', '').strip()
+        client_type = request.POST.get('client_type', 'individual')
+        
+        if not name:
+            messages.error(request, "Имя клиента обязательно для заполнения")
+            return redirect('clients')
+            
+        if not phone:
+            messages.error(request, "Номер телефона обязателен для заполнения")
+            return redirect('clients')
+            
+        # Специальные проверки для юридических лиц
+        if client_type == 'business':
+            company_name = request.POST.get('company_name', '').strip()
+            tax_number = request.POST.get('tax_number', '').strip()
+            
+            if not company_name:
+                messages.error(request, "Название компании обязательно для юридического лица")
+                return redirect('clients')
+                
+            if not tax_number:
+                messages.error(request, "ИНН обязателен для юридического лица")
+                return redirect('clients')
+        
+        # Обновление данных клиента
+        client.client_type = client_type
+        client.name = name
+        client.phone = phone
+        client.email = request.POST.get('email', '').strip()
+        client.address = request.POST.get('address', '').strip()
+        client.apartment = request.POST.get('apartment', '').strip()
+        client.floor = request.POST.get('floor') if request.POST.get('floor') else None
+        client.entrance = request.POST.get('entrance', '').strip()
+        client.region_id = request.POST.get('region') if request.POST.get('region') else None
+        client.notes = request.POST.get('notes', '').strip()
+        
+        if client_type == 'business':
+            client.company_name = company_name
+            client.tax_number = tax_number
+            client.contact_person = request.POST.get('contact_person', '').strip()
+        else:
+            client.company_name = ''
+            client.tax_number = ''
+            client.contact_person = ''
+        
+        try:
             client.save()
-            messages.success(request, "Клиент прикреплён к региону.")
-            return redirect('regions')
-        client.name = request.POST.get('name')
-        client.phone = request.POST.get('phone')
-        client.email = request.POST.get('email', '')
-        client.address = request.POST.get('address')
-        client.apartment = request.POST.get('apartment', '')
-        floor_value = request.POST.get('floor')
-        client.floor = int(floor_value) if floor_value else None
-        client.entrance = request.POST.get('entrance', '')
-        client.notes = request.POST.get('notes', '')
-        client.region_id = request.POST.get('region')
-        client.save()
-        messages.success(request, "Клиент обновлён.")
+            messages.success(request, "Клиент обновлён успешно.")
+        except Exception as e:
+            messages.error(request, f"Ошибка при обновлении клиента: {str(e)}")
+        
         return redirect('clients')
     return redirect('clients')
+
+@login_required
+@permission_required('crm.change_client', raise_exception=True)
+def attach_client_to_region(request):
+    if request.method == 'POST':
+        client_id = request.POST.get('client_id')
+        region_id = request.POST.get('region')
+        
+        if not client_id:
+            messages.error(request, "Клиент не выбран")
+            return redirect('regions')
+            
+        if not region_id:
+            messages.error(request, "Регион не выбран")
+            return redirect('regions')
+            
+        try:
+            client = Client.objects.get(id=client_id)
+            client.region_id = region_id
+            client.save()
+            messages.success(request, "Клиент успешно прикреплен к региону")
+        except Client.DoesNotExist:
+            messages.error(request, "Клиент не найден")
+        except Exception as e:
+            messages.error(request, f"Ошибка при прикреплении клиента к региону: {str(e)}")
+            
+        return redirect('regions')
+    return redirect('regions')
+
+@login_required
+def client_loyalty(request, client_id):
+    client = get_object_or_404(Client, id=client_id)
+    transactions = LoyaltyTransaction.objects.filter(client=client).order_by('-created_at')
+    recent_orders = Order.objects.filter(client=client).order_by('-order_date')[:5]
+    
+    return render(request, 'client_loyalty.html', {
+        'client': client,
+        'transactions': transactions,
+        'recent_orders': recent_orders
+    })
 
 @login_required
 @permission_required('crm.delete_client', raise_exception=True)
@@ -786,56 +819,7 @@ def create_product(request):
         return redirect('containers')
     return redirect('containers')
 
-@login_required
-@permission_required('crm.view_client', raise_exception=True)
-def export_clients_csv(request):
-    response = HttpResponse(content_type='text/csv')
-    response['Content-Disposition'] = 'attachment; filename="clients.csv"'
-    
-    writer = csv.writer(response)
-    writer.writerow(['ID', 'Имя', 'Телефон', 'Email', 'Адрес', 'Квартира', 'Этаж', 'Подъезд', 'Заметки', 'Дата регистрации', 'Регион'])
-    
-    clients = Client.objects.all()
-    for client in clients:
-        writer.writerow([
-            client.id,
-            client.name,
-            client.phone,
-            client.email,
-            client.address,
-            client.apartment,
-            client.floor,
-            client.entrance,
-            client.notes,
-            client.registration_date,
-            client.region.name if client.region else "Не указан"
-        ])
-    
-    return response
 
-@login_required
-@permission_required('crm.view_order', raise_exception=True)
-def export_orders_csv(request):
-    response = HttpResponse(content_type='text/csv')
-    response['Content-Disposition'] = 'attachment; filename="orders.csv"'
-    
-    writer = csv.writer(response)
-    writer.writerow(['ID', 'Клиент', 'Продукт', 'Количество', 'Статус', 'Дата заказа', 'Адрес доставки', 'Водитель'])
-    
-    orders = Order.objects.all()
-    for order in orders:
-        writer.writerow([
-            order.id,
-            order.client.name,
-            order.product.name,
-            order.quantity,
-            order.get_status_display(),
-            order.order_date,
-            order.delivery_address,
-            order.driver.name if order.driver else "Не назначен"
-        ])
-    
-    return response
 
 @login_required
 @permission_required('crm.view_order', raise_exception=True)
@@ -898,71 +882,99 @@ def export_revenue_by_month_csv(request):
     return response
 
 @login_required
+@permission_required('crm.view_order', raise_exception=True)
 def export_orders_xlsx(request):
-    wb = Workbook()
-    ws = wb.active
-    ws.title = 'Заказы'
-    ws.append(['ID', 'Клиент', 'Продукт', 'Количество', 'Статус', 'Дата заказа', 'Адрес доставки', 'Водитель', 'Регион'])
-    # Фильтры
     date_from = request.GET.get('date_from')
     date_to = request.GET.get('date_to')
     region_id = request.GET.get('region')
     driver_id = request.GET.get('driver')
-    orders = Order.objects.select_related('client', 'product', 'driver', 'client__region')
+
+    orders = Order.objects.all()
     if date_from:
-        orders = orders.filter(order_date__date__gte=date_from)
+        orders = orders.filter(order_date__gte=make_aware(datetime.strptime(date_from, '%Y-%m-%d')))
     if date_to:
-        orders = orders.filter(order_date__date__lte=date_to)
+        orders = orders.filter(order_date__lte=make_aware(datetime.strptime(date_to, '%Y-%m-%d')))
     if region_id:
         orders = orders.filter(client__region_id=region_id)
     if driver_id:
         orders = orders.filter(driver_id=driver_id)
+
+    # Создаем DataFrame
+    data = {
+        'ID': [],
+        'Дата': [],
+        'Клиент': [],
+        'Регион': [],
+        'Адрес': [],
+        'Продукт': [],
+        'Количество': [],
+        'Статус': [],
+        'Водитель': []
+    }
+
     for order in orders:
-        ws.append([
-            order.id,
-            order.client.name,
-            order.product.name,
-            order.quantity,
-            order.get_status_display(),
-            order.order_date.strftime('%d.%m.%Y %H:%M'),
-            order.delivery_address,
-            order.driver.name if order.driver else '',
-            order.client.region.name if order.client.region else '',
-        ])
-    response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-    filename = 'orders.xlsx'
-    response['Content-Disposition'] = f'attachment; filename="{urlquote(filename)}"'
-    wb.save(response)
+        data['ID'].append(order.id)
+        data['Дата'].append(order.order_date.strftime('%d.%m.%Y %H:%M'))
+        data['Клиент'].append(order.client.name)
+        data['Регион'].append(order.client.region.name if order.client.region else 'Не указан')
+        data['Адрес'].append(order.delivery_address)
+        data['Продукт'].append(order.product.name)
+        data['Количество'].append(order.quantity)
+        data['Статус'].append(order.get_status_display())
+        data['Водитель'].append(order.driver.name if order.driver else 'Не назначен')
+
+    df = pd.DataFrame(data)
+
+    # Создаем Excel файл
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Заказы')
+
+    output.seek(0)
+    response = HttpResponse(output.read(), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition'] = 'attachment; filename=orders_report.xlsx'
     return response
 
 @login_required
+@permission_required('crm.view_container', raise_exception=True)
 def export_containers_xlsx(request):
-    wb = Workbook()
-    ws = wb.active
-    ws.title = 'Тара'
-    ws.append(['ID', 'Продукт', 'Клиент', 'Количество', 'На руках у клиента', 'Последнее обновление', 'Регион', 'Водитель'])
     region_id = request.GET.get('region')
     driver_id = request.GET.get('driver')
-    containers = Container.objects.select_related('product', 'client', 'client__region')
+
+    containers = Container.objects.all()
     if region_id:
         containers = containers.filter(client__region_id=region_id)
     if driver_id:
-        containers = containers.filter(client__region__driver__id=driver_id)
+        containers = containers.filter(client__orders__driver_id=driver_id).distinct()
+
+    # Создаем DataFrame
+    data = {
+        'ID': [],
+        'Продукт': [],
+        'Клиент': [],
+        'Регион': [],
+        'Количество': [],
+        'Местоположение': [],
+    }
+
     for container in containers:
-        ws.append([
-            container.id,
-            container.product.name,
-            container.client.name if container.client else '',
-            container.quantity,
-            'Да' if container.is_at_client else 'Нет',
-            container.last_updated.strftime('%d.%m.%Y %H:%M'),
-            container.client.region.name if container.client and container.client.region else '',
-            container.client.region.driver_set.first().name if container.client and container.client.region and container.client.region.driver_set.exists() else '',
-        ])
-    response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-    filename = 'containers.xlsx'
-    response['Content-Disposition'] = f'attachment; filename="{urlquote(filename)}"'
-    wb.save(response)
+        data['ID'].append(container.id)
+        data['Продукт'].append(container.product.name)
+        data['Клиент'].append(container.client.name if container.client else '-')
+        data['Регион'].append(container.client.region.name if container.client and container.client.region else 'Не указан')
+        data['Количество'].append(container.quantity)
+        data['Местоположение'].append('У клиента' if container.is_at_client else 'На складе')
+
+    df = pd.DataFrame(data)
+
+    # Создаем Excel файл
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Тара')
+
+    output.seek(0)
+    response = HttpResponse(output.read(), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition'] = 'attachment; filename=containers_report.xlsx'
     return response
 
 @csrf_exempt
@@ -975,11 +987,13 @@ def api_update_order(request, order_id):
             order = Order.objects.get(id=order_id)
             driver = getattr(request.user, 'driver_profile', None)
             if request.user.is_authenticated and driver and order.driver == driver:
-                # Если пришёл статус delivered и paid и return_quantity, делаем все действия сразу
-                if data.get('status') == 'delivered' and data.get('paid', False):
-                    order.status = 'delivered'
-                    # Логика возврата тары
-                    return_qty = int(data.get('return_quantity', order.quantity))
+                if 'status' in data:
+                    order.status = data['status']
+                if 'driver_comment' in data:
+                    order.driver_comment = data['driver_comment']
+                # Возврат тары
+                if 'return_quantity' in data and data['status'] == 'returned':
+                    # Логика возврата тары (по умолчанию quantity заказа)
                     from .models import Container
                     container = Container.objects.filter(product=order.product, client=order.client, is_at_client=True).first()
                     if container:
@@ -989,28 +1003,10 @@ def api_update_order(request, order_id):
                         # Добавить на склад
                         warehouse_container = Container.objects.filter(product=order.product, is_at_client=False).first()
                         if warehouse_container:
-                            warehouse_container.quantity += return_qty
+                            warehouse_container.quantity += data['return_quantity']
                             warehouse_container.save()
                         else:
-                            Container.objects.create(product=order.product, quantity=return_qty, is_at_client=False)
-                else:
-                    if 'status' in data:
-                        order.status = data['status']
-                    if 'driver_comment' in data:
-                        order.driver_comment = data['driver_comment']
-                    if 'return_quantity' in data and data['status'] == 'returned':
-                        from .models import Container
-                        container = Container.objects.filter(product=order.product, client=order.client, is_at_client=True).first()
-                        if container:
-                            container.is_at_client = False
-                            container.client = None
-                            container.save()
-                            warehouse_container = Container.objects.filter(product=order.product, is_at_client=False).first()
-                            if warehouse_container:
-                                warehouse_container.quantity += data['return_quantity']
-                                warehouse_container.save()
-                            else:
-                                Container.objects.create(product=order.product, quantity=data['return_quantity'], is_at_client=False)
+                            Container.objects.create(product=order.product, quantity=data['return_quantity'], is_at_client=False)
                 order.save()
                 return JsonResponse({'success': True})
             else:
@@ -1019,51 +1015,90 @@ def api_update_order(request, order_id):
             return JsonResponse({'success': False, 'error': 'Заказ не найден'}, status=404)
     return JsonResponse({'success': False, 'error': 'Метод не поддерживается'}, status=405)
 
-@login_required
+def create_route(request):
+    if request.method == 'POST':
+        order_ids = request.POST.getlist('orders')
+        if order_ids:
+            route = Route.objects.create()
+            for i, order_id in enumerate(order_ids, start=1):
+                RouteOrder.objects.create(
+                    route=route,
+                    order=Order.objects.get(id=order_id),
+                    order_number=i
+                )
+            return redirect('route_detail', route_id=route.id)
+    
+    orders = Order.objects.filter(status='planned')
+    return render(request, 'create_route.html', {'orders': orders})
+
+def route_detail(request, route_id):
+    route = Route.objects.prefetch_related('routeorder_set__order').get(id=route_id)
+    return render(request, 'route_detail.html', {'route': route})
+
+def routes(request):
+    # Заглушка для страницы маршрутов
+    return render(request, 'routes.html')
+
 def reports(request):
     regions = Region.objects.all()
-    drivers = Driver.objects.all()
-    # Фильтры
-    date_from = request.GET.get('date_from')
-    date_to = request.GET.get('date_to')
-    region_id = request.GET.get('region')
-    driver_id = request.GET.get('driver')
-    orders = Order.objects.select_related('client', 'product', 'driver', 'client__region').all()
+    return render(request, 'reports.html', {'regions': regions})
 
-    # Если пользователь — водитель, показываем только его заказы
-    driver_profile = getattr(request.user, 'driver_profile', None)
-    if driver_profile:
-        orders = orders.filter(driver=driver_profile)
-    if date_from:
-        orders = orders.filter(order_date__date__gte=date_from)
-    if date_to:
-        orders = orders.filter(order_date__date__lte=date_to)
-    if region_id:
-        orders = orders.filter(client__region_id=region_id)
-    if driver_id:
-        orders = orders.filter(driver_id=driver_id)
-    return render(request, 'reports.html', {
-        'regions': regions,
-        'drivers': drivers,
-        'orders': orders,
+@login_required
+def notifications_list(request):
+    if request.user.is_staff:
+        # Администраторы видят все уведомления
+        notifications = Notification.objects.all()
+    elif hasattr(request.user, 'driver_profile'):
+        # Водители видят уведомления по своим заказам
+        notifications = Notification.objects.filter(
+            Q(client__in=Client.objects.filter(region__driver=request.user.driver_profile)) |
+            Q(order__driver=request.user.driver_profile)
+        )
+    else:
+        # Клиенты видят только свои уведомления
+        try:
+            client = Client.objects.get(user=request.user)
+            notifications = Notification.objects.filter(client=client)
+        except Client.DoesNotExist:
+            notifications = Notification.objects.none()
+    
+    notifications = notifications.select_related('client').order_by('-created_at')
+    
+    return render(request, 'notifications.html', {
+        'notifications': notifications
     })
 
 @login_required
-def export_containers_csv(request):
-    response = HttpResponse(content_type='text/csv')
-    response['Content-Disposition'] = 'attachment; filename="containers.csv"'
-    writer = csv.writer(response)
-    writer.writerow(['ID', 'Продукт', 'Клиент', 'Количество', 'На руках у клиента', 'Последнее обновление'])
-    for container in Container.objects.all():
-        writer.writerow([
-            container.id,
-            container.product.name,
-            container.client.name if container.client else '',
-            container.quantity,
-            'Да' if container.is_at_client else 'Нет',
-            container.last_updated.strftime('%d.%m.%Y %H:%M'),
-        ])
-    return response
+def mark_notification_read(request, notification_id):
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Method not allowed'}, status=405)
+
+    try:
+        if request.user.is_staff:
+            # Администраторы могут отмечать любые уведомления
+            notification = Notification.objects.get(id=notification_id)
+        elif hasattr(request.user, 'driver_profile'):
+            # Водители могут отмечать уведомления по своим заказам
+            driver_clients = Client.objects.filter(region__driver=request.user.driver_profile)
+            notification = Notification.objects.filter(
+                id=notification_id
+            ).filter(
+                Q(client__in=driver_clients) |
+                Q(order__driver=request.user.driver_profile)
+            ).first()
+            if not notification:
+                raise Notification.DoesNotExist()
+        else:
+            # Клиенты могут отмечать только свои уведомления
+            client = Client.objects.get(user=request.user)
+            notification = Notification.objects.get(id=notification_id, client=client)
+
+        notification.is_read = True
+        notification.save()
+        return JsonResponse({'status': 'success'})
+        
+    except (Notification.DoesNotExist, Client.DoesNotExist):
+        return JsonResponse({'status': 'error', 'message': 'Notification not found'}, status=404)
 
 class ClientViewSet(viewsets.ModelViewSet):
     queryset = Client.objects.all()
@@ -1089,3 +1124,89 @@ class RegionViewSet(viewsets.ModelViewSet):
     queryset = Region.objects.prefetch_related('client_set').all()
     serializer_class = RegionSerializer
     permission_classes = [IsAuthenticated]
+
+def is_manager(user):
+    return user.is_staff or user.is_superuser
+
+@user_passes_test(is_manager)
+def loyalty_dashboard(request):
+    programs = LoyaltyProgram.objects.all()
+    categories = ClientCategory.objects.all()
+    total_points = LoyaltyTransaction.objects.aggregate(total=Sum('points'))['total'] or 0
+    
+    context = {
+        'programs': programs,
+        'categories': categories,
+        'total_points': total_points,
+        'active_programs': programs.filter(is_active=True).count(),
+    }
+    return render(request, 'loyalty/dashboard.html', context)
+
+@user_passes_test(is_manager)
+def loyalty_program_edit(request, program_id=None):
+    if program_id:
+        program = get_object_or_404(LoyaltyProgram, id=program_id)
+    else:
+        program = None
+    
+    if request.method == 'POST':
+        name = request.POST.get('name')
+        points_per_liter = request.POST.get('points_per_liter')
+        points_to_money_rate = request.POST.get('points_to_money_rate')
+        min_points_to_redeem = request.POST.get('min_points_to_redeem')
+        is_active = request.POST.get('is_active') == 'on'
+        
+        if program is None:
+            program = LoyaltyProgram.objects.create(
+                name=name,
+                points_per_liter=points_per_liter,
+                points_to_money_rate=points_to_money_rate,
+                min_points_to_redeem=min_points_to_redeem,
+                is_active=is_active
+            )
+        else:
+            program.name = name
+            program.points_per_liter = points_per_liter
+            program.points_to_money_rate = points_to_money_rate
+            program.min_points_to_redeem = min_points_to_redeem
+            program.is_active = is_active
+            program.save()
+            
+        messages.success(request, 'Программа лояльности успешно сохранена')
+        return redirect('loyalty_dashboard')
+        
+    return render(request, 'loyalty/program_form.html', {'program': program})
+
+@user_passes_test(is_manager)
+def loyalty_category_edit(request, category_id=None):
+    if category_id:
+        category = get_object_or_404(ClientCategory, id=category_id)
+    else:
+        category = None
+        
+    if request.method == 'POST':
+        name = request.POST.get('name')
+        discount_percentage = request.POST.get('discount_percentage')
+        min_points_required = request.POST.get('min_points_required')
+        
+        if category is None:
+            category = ClientCategory.objects.create(
+                name=name,
+                discount_percentage=discount_percentage,
+                min_points_required=min_points_required
+            )
+        else:
+            category.name = name
+            category.discount_percentage = discount_percentage
+            category.min_points_required = min_points_required
+            category.save()
+            
+        messages.success(request, 'Категория клиентов успешно сохранена')
+        return redirect('loyalty_dashboard')
+        
+    return render(request, 'loyalty/category_form.html', {'category': category})
+
+@user_passes_test(is_manager)
+def loyalty_transactions(request):
+    transactions = LoyaltyTransaction.objects.select_related('client').order_by('-created_at')
+    return render(request, 'loyalty/transactions.html', {'transactions': transactions})

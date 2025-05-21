@@ -26,6 +26,13 @@ DEBUG = True
 
 ALLOWED_HOSTS = []
 
+# Static files (CSS, JavaScript, Images)
+STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATICFILES_DIRS = [
+    BASE_DIR / 'static'
+]
+
 # Application definition
 
 INSTALLED_APPS = [
@@ -37,7 +44,6 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'crm.apps.CrmConfig',
     'rest_framework',
-    'channels',
 ]
 
 MIDDLEWARE = [
@@ -69,7 +75,6 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'water_delivery_crm.wsgi.application'
-ASGI_APPLICATION = 'water_delivery_crm.asgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
@@ -140,7 +145,6 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'crm',
-    'channels',
 ]
 
 MIDDLEWARE = [
@@ -172,7 +176,6 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'water_delivery_crm.wsgi.application'
-ASGI_APPLICATION = 'water_delivery_crm.asgi.application'
 
 DATABASES = {
     'default': {
@@ -218,14 +221,5 @@ EMAIL_USE_TLS = True
 EMAIL_HOST_USER = 'obi.shirin2@gmail.com'  # Замени на свой email
 EMAIL_HOST_PASSWORD = 'uajk tgwj jezg zpwa'  # Используй пароль приложения (не обычный пароль)
 DEFAULT_FROM_EMAIL = 'obi.shirin2@gmail.com'
-
-CHANNEL_LAYERS = {
-    'default': {
-        'BACKEND': 'channels_redis.core.RedisChannelLayer',
-        'CONFIG': {
-            'hosts': [('127.0.0.1', 6379)],
-        },
-    },
-}
 
 # ... (остальной код файла)

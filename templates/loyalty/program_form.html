@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+
+{% block title %}
+{% if program %}Редактирование программы лояльности{% else %}Новая программа лояльности{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title mb-0">
+                        {% if program %}
+                        Редактирование программы лояльности
+                        {% else %}
+                        Новая программа лояльности
+                        {% endif %}
+                    </h3>
+                </div>
+                <div class="card-body">
+                    <form method="post">
+                        {% csrf_token %}
+                        <div class="mb-3">
+                            <label for="name" class="form-label">Название программы</label>
+                            <input type="text" class="form-control" id="name" name="name" 
+                                   value="{{ program.name|default:'' }}" required>
+                        </div>                        <div class="mb-3">
+                            <label for="points_per_liter" class="form-label">Баллов за литр</label>
+                            <input type="number" class="form-control" id="points_per_liter" 
+                                   name="points_per_liter" value="{{ program.points_per_liter|default:'1' }}" 
+                                   step="0.01" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="points_to_money_rate" class="form-label">Курс конвертации баллов в рубли</label>
+                            <input type="number" class="form-control" id="points_to_money_rate" 
+                                   name="points_to_money_rate" value="{{ program.points_to_money_rate|default:'1' }}" 
+                                   step="0.01" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="min_points_to_redeem" class="form-label">Минимальное количество баллов для использования</label>
+                            <input type="number" class="form-control" id="min_points_to_redeem" 
+                                   name="min_points_to_redeem" value="{{ program.min_points_to_redeem|default:'100' }}" required>
+                        </div>
+                        <div class="mb-3 form-check">
+                            <input type="checkbox" class="form-check-input" id="is_active" name="is_active"
+                                   {% if program.is_active|default:True %}checked{% endif %}>
+                            <label class="form-check-label" for="is_active">Программа активна</label>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <a href="{% url 'loyalty_dashboard' %}" class="btn btn-secondary">Отмена</a>
+                            <button type="submit" class="btn btn-primary">Сохранить</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,100 @@
+{% extends 'base.html' %}
+
+{% block title %}Управление программой лояльности{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Управление программой лояльности</h2>
+        <div>
+            <a href="{% url 'loyalty_program_new' %}" class="btn btn-primary me-2">
+                <i class="fas fa-plus"></i> Новая программа
+            </a>
+            <a href="{% url 'loyalty_category_new' %}" class="btn btn-success">
+                <i class="fas fa-plus"></i> Новая категория
+            </a>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card text-white bg-primary">
+                <div class="card-body">
+                    <h5 class="card-title">Активные программы</h5>
+                    <h2 class="card-text">{{ active_programs }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-white bg-success">
+                <div class="card-body">
+                    <h5 class="card-title">Всего баллов начислено</h5>
+                    <h2 class="card-text">{{ total_points }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-white bg-info">
+                <div class="card-body">
+                    <h5 class="card-title">Категорий клиентов</h5>
+                    <h2 class="card-text">{{ categories.count }}</h2>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6">
+            <h3>Программы лояльности</h3>
+            <div class="list-group">
+                {% for program in programs %}
+                <div class="list-group-item">
+                    <div class="d-flex w-100 justify-content-between">
+                        <h5 class="mb-1">{{ program.name }}</h5>
+                        <small>
+                            {% if program.is_active %}
+                            <span class="badge bg-success">Активна</span>
+                            {% else %}
+                            <span class="badge bg-secondary">Неактивна</span>
+                            {% endif %}
+                        </small>
+                    </div>
+                    <p class="mb-1">{{ program.description }}</p>
+                    <small>Баллов за заказ: {{ program.points_per_order }}</small>
+                    <div class="mt-2">
+                        <a href="{% url 'loyalty_program_edit' program.id %}" class="btn btn-sm btn-outline-primary">
+                            Редактировать
+                        </a>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <h3>Категории клиентов</h3>
+            <div class="list-group">
+                {% for category in categories %}
+                <div class="list-group-item">
+                    <div class="d-flex w-100 justify-content-between">
+                        <h5 class="mb-1">{{ category.name }}</h5>
+                        <small>Скидка: {{ category.discount_percentage }}%</small>
+                    </div>
+                    <p class="mb-1">Минимум баллов: {{ category.min_points_required }}</p>
+                    <div class="mt-2">
+                        <a href="{% url 'loyalty_category_edit' category.id %}" class="btn btn-sm btn-outline-success">
+                            Редактировать
+                        </a>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="mt-4">
+        <h3>Последние транзакции</h3>
+        <a href="{% url 'loyalty_transactions' %}" class="btn btn-link">Просмотреть все транзакции</a>
+    </div>
+</div>
+{% endblock %}

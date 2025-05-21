@@ -19,38 +19,19 @@
         {% if can_add_region %}
         <button onclick="showForm('region-form', null)" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600">Добавить регион</button>
         {% endif %}
-    </div>
-
-    {% if can_add_client %}
-    <div id="client-form" class="bg-white rounded-lg shadow p-4 mb-6">
-        <h3 class="text-base sm:text-lg font-medium mb-4" id="client-form-title">Добавить клиента в регион</h3>
-        <form id="client-form-element" method="post" action="{% url 'create_client' %}">
+    </div>    {% if can_add_client %}    <div id="client-form" class="bg-white rounded-lg shadow p-4 mb-6">
+        <h3 class="text-base sm:text-lg font-medium mb-4" id="client-form-title">Прикрепить клиента к региону</h3>
+        <form id="client-form-element" method="post" action="{% url 'attach_client_to_region' %}">
             {% csrf_token %}
-            <input type="hidden" name="client_id" id="client-id">
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 gap-4">
                 <div>
-                    <label class="block text-sm font-medium text-gray-700">Имя</label>
-                    <input type="text" name="name" required class="mt-1 block w-full border rounded-lg px-3 py-2">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">Телефон</label>
-                    <input type="text" name="phone" required class="mt-1 block w-full border rounded-lg px-3 py-2">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">Адрес</label>
-                    <input type="text" name="address" required class="mt-1 block w-full border rounded-lg px-3 py-2">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">Квартира</label>
-                    <input type="text" name="apartment" class="mt-1 block w-full border rounded-lg px-3 py-2">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">Этаж</label>
-                    <input type="text" name="floor" class="mt-1 block w-full border rounded-lg px-3 py-2">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">Подъезд</label>
-                    <input type="text" name="entrance" class="mt-1 block w-full border rounded-lg px-3 py-2">
+                    <label class="block text-sm font-medium text-gray-700">Выберите клиента</label>
+                    <select name="client_id" required class="mt-1 block w-full border rounded-lg px-3 py-2">
+                        <option value="">-- Выберите клиента --</option>
+                        {% for client in clients %}
+                            <option value="{{ client.id }}">{{ client.name }} ({{ client.phone }})</option>
+                        {% endfor %}
+                    </select>
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700">Регион</label>
@@ -67,16 +48,14 @@
             </div>
         </form>
     </div>
-    {% endif %}
-
-    <div id="client-attach-form" class="bg-white rounded-lg shadow p-4 mb-6">
+    {% endif %}    <div id="client-attach-form" class="bg-white rounded-lg shadow p-4 mb-6">
         <h3 class="text-base sm:text-lg font-medium mb-4">Прикрепить существующего клиента к региону</h3>
-        <form method="post" action="{% url 'edit_client' %}">
+        <form method="post" action="{% url 'attach_client_to_region' %}">
             {% csrf_token %}
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                    <label class="block text-sm font-medium text-gray-700">Клиент</label>
-                    <select name="client_id" required class="mt-1 block w-full border rounded-lg px-3 py-2">
+                    <label class="block text-sm font-medium text-gray-700" for="client_select">Клиент</label>
+                    <select id="client_select" name="client_id" required class="mt-1 block w-full border rounded-lg px-3 py-2">
                         <option value="">Выберите клиента</option>
                         {% for client in clients %}
                         <option value="{{ client.id }}">{{ client.name }} ({{ client.phone }})</option>
@@ -84,8 +63,8 @@
                     </select>
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700">Регион</label>
-                    <select name="region" required class="mt-1 block w-full border rounded-lg px-3 py-2">
+                    <label class="block text-sm font-medium text-gray-700" for="region_select">Регион</label>
+                    <select id="region_select" name="region" required class="mt-1 block w-full border rounded-lg px-3 py-2">
                         <option value="">Выберите регион</option>
                         {% for region in regions %}
                         <option value="{{ region.id }}">{{ region.name }}</option>

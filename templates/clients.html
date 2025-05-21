@@ -26,25 +26,64 @@
         <form id="client-form-element" method="post" action="{% url 'create_client' %}">
             {% csrf_token %}
             <input type="hidden" name="client_id" id="client-id">
+            
+            <!-- Тип клиента -->
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Тип клиента</label>
+                <div class="flex gap-4">
+                    <label class="inline-flex items-center">
+                        <input type="radio" name="client_type" value="individual" checked 
+                               class="form-radio text-blue-600" onchange="toggleClientType(this)">
+                        <span class="ml-2">Физическое лицо</span>
+                    </label>
+                    <label class="inline-flex items-center">
+                        <input type="radio" name="client_type" value="business"
+                               class="form-radio text-blue-600" onchange="toggleClientType(this)">
+                        <span class="ml-2">Юридическое лицо</span>
+                    </label>
+                </div>
+            </div>
+
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <!-- Основная информация -->
                 <div>
                     <label class="block text-sm font-medium text-gray-700">Имя</label>
                     <input type="text" name="name" required class="mt-1 block w-full border rounded-lg px-3 py-2">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700">Телефон</label>
-                    <input type="text" name="phone" required class="mt-1 block w-full border rounded-lg px-3 py-2">
+                    <input type="text" name="phone" required placeholder="+7XXXXXXXXXX" 
+                           pattern="\+?[1-9]\d{9,14}" title="Введите корректный номер телефона"
+                           class="mt-1 block w-full border rounded-lg px-3 py-2">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700">Email</label>
                     <input type="email" name="email" class="mt-1 block w-full border rounded-lg px-3 py-2">
                 </div>
-                <div>
+
+                <!-- Поля для юридических лиц -->
+                <div id="business-fields" class="hidden sm:col-span-2 space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Название компании</label>
+                        <input type="text" name="company_name" class="mt-1 block w-full border rounded-lg px-3 py-2">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">ИНН</label>
+                        <input type="text" name="tax_number" class="mt-1 block w-full border rounded-lg px-3 py-2">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Контактное лицо</label>
+                        <input type="text" name="contact_person" class="mt-1 block w-full border rounded-lg px-3 py-2">
+                    </div>
+                </div>
+
+                <!-- Адрес -->
+                <div class="sm:col-span-2">
                     <label class="block text-sm font-medium text-gray-700">Адрес</label>
                     <input type="text" name="address" required class="mt-1 block w-full border rounded-lg px-3 py-2">
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700">Квартира</label>
+                    <label class="block text-sm font-medium text-gray-700">Квартира/Офис</label>
                     <input type="text" name="apartment" class="mt-1 block w-full border rounded-lg px-3 py-2">
                 </div>
                 <div>
@@ -65,57 +104,90 @@
                     </select>
                 </div>
                 <div class="sm:col-span-2">
-                    <label class="block text-sm font-medium text-gray-700">Заметки</label>
-                    <textarea name="notes" class="mt-1 block w-full border rounded-lg px-3 py-2"></textarea>
+                    <label class="block text-sm font-medium text-gray-700">Примечания</label>
+                    <textarea name="notes" rows="3" class="mt-1 block w-full border rounded-lg px-3 py-2"></textarea>
                 </div>
             </div>
             <div class="mt-4 flex space-x-2">
-                <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600">Сохранить</button>
-                <button type="button" onclick="document.getElementById('client-form').classList.add('hidden')" class="text-gray-500 hover:text-gray-700">Отмена</button>
+                <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Сохранить</button>
+                <button type="button" onclick="hideForm('client-form')" class="bg-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-400">Отмена</button>
             </div>
         </form>
     </div>
     {% endif %}
-    <div class="bg-white rounded-lg shadow p-4">
-        <div class="mb-4">
-            <input type="text" id="client-search" placeholder="Поиск по имени или телефону..." class="flex-1 border rounded-lg px-4 py-2 w-full">
-        </div>
-        <div class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-gray-200">
-                <thead>
-                    <tr>
-                        <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
-                        <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Имя</th>
-                        <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Телефон</th>
-                        <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
-                        <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Адрес</th>
-                        <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Действия</th>
-                    </tr>
-                </thead>
-                <tbody id="client-table-body" class="divide-y divide-gray-200">
-                    {% for client in page_obj %}
-                    <tr>
-                        <td class="px-2 sm:px-4 py-2 text-sm">{{ client.id }}</td>
-                        <td class="px-2 sm:px-4 py-2 text-sm">{{ client.name }}</td>
-                        <td class="px-2 sm:px-4 py-2 text-sm">{{ client.phone }}</td>
-                        <td class="px-2 sm:px-4 py-2 text-sm">{{ client.email|default:"—" }}</td>
-                        <td class="px-2 sm:px-4 py-2 text-sm">{{ client.address }}</td>
-                        <td class="px-2 sm:px-4 py-2 text-sm space-x-2">
-                            {% if can_change_client %}
-                            <button onclick="editClient({{ client.id }}, '{{ client.name }}', '{{ client.phone }}', '{{ client.email }}', '{{ client.address }}', '{{ client.apartment }}', '{{ client.floor }}', '{{ client.entrance }}', '{{ client.notes }}')" class="text-blue-500 hover:underline">Редактировать</button>
-                            {% endif %}
-                            {% if can_delete_client %}
-                            <button onclick="showDeleteModal('{% url 'delete_client' client.id %}')" class="text-red-500 hover:underline">Удалить</button>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% empty %}
-                    <tr>
-                        <td colspan="6" class="px-2 sm:px-4 py-2 text-center text-gray-500">Нет клиентов</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+    <div class="bg-white rounded-lg shadow">
+        <div class="p-4">
+            <div class="mb-4">
+                <input type="text" id="client-search" placeholder="Поиск клиентов..." class="w-full sm:w-64 border rounded-lg px-3 py-2">
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead>
+                        <tr>
+                            <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Тип</th>
+                            <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Имя/Компания</th>
+                            <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Телефон</th>
+                            <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
+                            <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Адрес</th>
+                            <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Регион</th>
+                            <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Баллы</th>
+                            <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Категория</th>
+                            <th class="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody id="client-table-body" class="divide-y divide-gray-200">
+                        {% for client in page_obj %}
+                        <tr>
+                            <td class="px-2 sm:px-4 py-2 text-sm">
+                                {% if client.client_type == 'business' %}
+                                    <span class="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">Юр. лицо</span>
+                                {% else %}
+                                    <span class="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs">Физ. лицо</span>
+                                {% endif %}
+                            </td>
+                            <td class="px-2 sm:px-4 py-2 text-sm">
+                                {% if client.client_type == 'business' %}
+                                    {{ client.company_name }}<br>
+                                    <span class="text-gray-500 text-xs">{{ client.contact_person }}</span>
+                                {% else %}
+                                    {{ client.name }}
+                                {% endif %}
+                            </td>
+                            <td class="px-2 sm:px-4 py-2 text-sm">{{ client.phone }}</td>
+                            <td class="px-2 sm:px-4 py-2 text-sm">{{ client.email|default:"-" }}</td>
+                            <td class="px-2 sm:px-4 py-2 text-sm">{{ client.address }}</td>
+                            <td class="px-2 sm:px-4 py-2 text-sm">{{ client.region.name|default:"Не указан" }}</td>
+                            <td class="px-2 sm:px-4 py-2 text-sm">
+                                <span class="font-medium {% if client.loyalty_points > 0 %}text-green-600{% else %}text-gray-600{% endif %}">
+                                    {{ client.loyalty_points|floatformat:0 }}
+                                </span>
+                            </td>
+                            <td class="px-2 sm:px-4 py-2 text-sm">
+                                {% if client.category %}
+                                    <span class="bg-purple-100 text-purple-800 px-2 py-1 rounded-full text-xs">
+                                        {{ client.category.name }}
+                                    </span>
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td class="px-2 sm:px-4 py-2 text-sm space-x-2">
+                                {% if can_change_client %}
+                                <button onclick="editClient({{ client.id }}, '{{ client.name|escapejs }}', '{{ client.phone|escapejs }}', '{{ client.email|escapejs }}', '{{ client.address|escapejs }}', '{{ client.apartment|escapejs }}', {{ client.floor|default:'null' }}, '{{ client.entrance|escapejs }}', {% if client.region %}'{{ client.region.id }}'{% else %}''{% endif %}, '{{ client.notes|escapejs }}', '{{ client.client_type }}', '{{ client.company_name|default:''|escapejs }}', '{{ client.tax_number|default:''|escapejs }}', '{{ client.contact_person|default:''|escapejs }}')" class="text-blue-500 hover:underline">Редактировать</button>
+                                {% endif %}
+                                {% if can_delete_client %}
+                                <button onclick="showDeleteModal('{% url 'delete_client' client.id %}')" class="text-red-500 hover:underline">Удалить</button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="9" class="px-2 sm:px-4 py-2 text-center text-gray-500">Нет клиентов</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
         <div class="mt-4 flex flex-col sm:flex-row justify-between items-center">
             <div class="mb-2 sm:mb-0">
@@ -140,7 +212,18 @@
         </div>
     </div>
 </div>
+
+<!-- JavaScript для управления формой -->
 <script>
+function toggleClientType(radio) {
+    const businessFields = document.getElementById('business-fields');
+    if (radio.value === 'business') {
+        businessFields.classList.remove('hidden');
+    } else {
+        businessFields.classList.add('hidden');
+    }
+}
+
 function showForm(formId, clientId) {
     const form = document.getElementById(formId);
     const formElement = document.getElementById('client-form-element');
@@ -158,17 +241,30 @@ function showForm(formId, clientId) {
     }
 }
 
-function editClient(id, name, phone, email, address, apartment, floor, entrance, notes) {
+function editClient(id, name, phone, email, address, apartment, floor, entrance, regionId, notes, 
+                   clientType, companyName, taxNumber, contactPerson) {
     showForm('client-form', id);
     const form = document.getElementById('client-form-element');
+    
+    // Установка типа клиента
+    form.querySelector(`input[name="client_type"][value="${clientType}"]`).checked = true;
+    toggleClientType(form.querySelector(`input[name="client_type"][value="${clientType}"]`));
+    
+    // Заполнение основных полей
     form.querySelector('[name="name"]').value = name;
     form.querySelector('[name="phone"]').value = phone;
     form.querySelector('[name="email"]').value = email;
     form.querySelector('[name="address"]').value = address;
     form.querySelector('[name="apartment"]').value = apartment;
-    form.querySelector('[name="floor"]').value = floor;
+    form.querySelector('[name="floor"]').value = floor || '';
     form.querySelector('[name="entrance"]').value = entrance;
+    form.querySelector('[name="region"]').value = regionId;
     form.querySelector('[name="notes"]').value = notes;
+    
+    // Заполнение полей для юридического лица
+    form.querySelector('[name="company_name"]').value = companyName;
+    form.querySelector('[name="tax_number"]').value = taxNumber;
+    form.querySelector('[name="contact_person"]').value = contactPerson;
 }
 
 document.getElementById('client-search').addEventListener('input', function(e) {
@@ -179,7 +275,7 @@ document.getElementById('client-search').addEventListener('input', function(e) {
             const tbody = document.getElementById('client-table-body');
             tbody.innerHTML = '';
             if (data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="px-2 sm:px-4 py-2 text-center text-gray-500">Нет клиентов</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="9" class="px-2 sm:px-4 py-2 text-center text-gray-500">Нет клиентов</td></tr>';
                 return;
             }
             const canChangeClient = {{ can_change_client|yesno:"true,false" }};
@@ -188,17 +284,30 @@ document.getElementById('client-search').addEventListener('input', function(e) {
                 const row = document.createElement('tr');
                 let actions = '';
                 if (canChangeClient) {
-                    actions += `<button onclick="editClient(${client.id}, '${client.name}', '${client.phone}', '${client.email}', '${client.address}', '${client.apartment}', '${client.floor}', '${client.entrance}', '${client.notes}')" class="text-blue-500 hover:underline">Редактировать</button>`;
+                    actions += `<button onclick="editClient(${client.id}, '${client.name}', '${client.phone}', '${client.email}', '${client.address}', '${client.apartment}', '${client.floor}', '${client.entrance}', '${client.region ? client.region.id : ''}', '${client.notes}', '${client.client_type}', '${client.company_name || ''}', '${client.tax_number || ''}', '${client.contact_person || ''}')" class="text-blue-500 hover:underline">Редактировать</button>`;
                 }
                 if (canDeleteClient) {
                     actions += `<button onclick="showDeleteModal('/delete-client/${client.id}/')" class="text-red-500 hover:underline">Удалить</button>`;
                 }
                 row.innerHTML = `
-                    <td class="px-2 sm:px-4 py-2 text-sm">${client.id}</td>
-                    <td class="px-2 sm:px-4 py-2 text-sm">${client.name}</td>
+                    <td class="px-2 sm:px-4 py-2 text-sm">
+                        ${client.client_type === 'business' ? '<span class="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">Юр. лицо</span>' : '<span class="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs">Физ. лицо</span>'}
+                    </td>
+                    <td class="px-2 sm:px-4 py-2 text-sm">
+                        ${client.client_type === 'business' ? `${client.company_name}<br><span class="text-gray-500 text-xs">${client.contact_person}</span>` : client.name}
+                    </td>
                     <td class="px-2 sm:px-4 py-2 text-sm">${client.phone}</td>
-                    <td class="px-2 sm:px-4 py-2 text-sm">${client.email || '—'}</td>
+                    <td class="px-2 sm:px-4 py-2 text-sm">${client.email || '-'}</td>
                     <td class="px-2 sm:px-4 py-2 text-sm">${client.address}</td>
+                    <td class="px-2 sm:px-4 py-2 text-sm">${client.region ? client.region.name : 'Не указан'}</td>
+                    <td class="px-2 sm:px-4 py-2 text-sm">
+                        <span class="font-medium ${client.loyalty_points > 0 ? 'text-green-600' : 'text-gray-600'}">
+                            ${client.loyalty_points.toFixed(0)}
+                        </span>
+                    </td>
+                    <td class="px-2 sm:px-4 py-2 text-sm">
+                        ${client.category ? `<span class="bg-purple-100 text-purple-800 px-2 py-1 rounded-full text-xs">${client.category.name}</span>` : '-'}
+                    </td>
                     <td class="px-2 sm:px-4 py-2 text-sm space-x-2">${actions}</td>
                 `;
                 tbody.appendChild(row);
